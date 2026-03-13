@@ -1,0 +1,54 @@
+Laboratório 1 || Sistemas Operacionais 
+Rafaela Bessa (2420043) e Lis Almeida (2421294)
+
+O objetivo deste trabalho é compreender o funcionamento da criação de processos em sistemas operacionais utilizando a chamada de sistema fork() (usamos a linguagem C).
+O programa deve criar uma hierarquia de três processos: pai, filho e neto, onde cada processo executa um conjunto de operações sobre uma variável inteira n, iniciada como n=1.
+Depois de desenvolver os processos:
+
+O processo pai executa um loop de 1000 iterações somando 1 à variável n.
+O processo filho executa um loop de 1000 iterações somando 10 à variável n.
+O processo neto executa um loop de 1000 iterações somando 100 à variável n.
+
+Durante a execução, cada processo imprime na tela seu PID (Process ID) e o valor atualizado da variável n. Além disso, o processo pai espera o fim do processo do filho e o filho espera o término do processo do neto utilizando a função waitpid().
+
+Estrutura do Programa
+
+Usamos as seguintes bibliotecas:
+
+stdio.h
+unistd.h
+sys/wait.h 
+stdlib.h
+
+A estrutura geral do programa é composta pelos seguintes elementos:
+n: variável inteira inicializada com valor 1.
+pid_filho: armazena o PID retornado pela criação do processo filho.
+pid_neto: armazena o PID retornado pela criação do processo neto.
+
+A função fork() é usada para criar o processo filho. O retorno de fork() determina qual código será executado.
+Quando fork() retorna um valor maior que zero, significa que estamos no processo pai.
+
+O pai executa:
+um loop de 1000 iterações, depois soma 1 à variável n a cada iteração, imprime o PID e o valor de n e por fim espera o filho terminar utilizando waitpid().
+O processo filho cria um novo processo através de outro fork()
+
+
+Quando pid_neto > 0, o processo está executando como filho.
+O filho executa:
+um loop de 1000 iterações, depois soma 10 à variável n, imprime PID e valor de n e espera o término do neto com waitpid()
+
+
+Quando pid_neto == 0, o processo executa como neto.
+O neto executa:
+um loop de 1000 iterações, soma 100 à variável n, imprime PID e valor de n e finaliza com exit(0)
+
+
+Os três processos executam simultaneamente, portanto as mensagens aparecem intercaladas no terminal.
+
+Durante o desenvolvimento do programa foi possível observar aspectos importantes sobre a criação de processos.
+Primeiramente, percebemos que os valores da variável n impressos pelos processos são diferentes entre si.
+Isso acontece porque quando a função fork() é executada, o sistema operacional cria uma cópia do processo.
+Por causa disso, cada processo passa a ter uma cópia própria da variável n.
+Outro aspecto que observamos foi que a ordem das mensagens impressas no terminal não era fixa. Como os processos executam em paralelo, o sistema operacional decide qual processo será executado a cada momento.
+Uma dificuldade inicial foi entender como exatamente funcionava a função fork() e como ela alterava a saída do programa.
+Depois de compreendermos a função, o laboratório como um todo foi muito mais fácil de ser realizado.
