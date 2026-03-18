@@ -1,0 +1,29 @@
+~ Lab2 ~
+
+Dupla: Rafaela Bessa (2420043) e Lis Almeida (2421294)
+
+Objetivo
+O objetivo deste laboratório é entender o funcionamento da criação de processos irmãos em sistemas operacionais utilizando o fork(). O programa deve criar 3 processos irmãos a partir de um único pai, onde cada processo filho executa um conjunto de operações sobre uma variável inteira n, iniciada como n = 1. O processo pai só deve terminar depois de todos os três filhos terminarem.
+
+Estrutura do programa
+Usamos as seguintes bibliotecas como pedido: stdio.h, unistd.h, sys/wait.h e stdlib.h. A estrutura geral do programa é composta pelos seguintes elementos:
+n: variável inteira inicializada com valor 1.
+pid1, pid2 e pid3: variáveis para armazenar os PIDs retornados pela criação dos três processos filhos.
+Funções implementadas: A função fork() é usada três vezes pelo processo pai para criar os processos irmãos, filhos desse pai. Usamos getpid() para pegar a identificação de cada processo, exit(0) para finalizar os filhos adequadamente no momento certo, e waitpid() para fazer o pai esperar o término de cada filho.
+
+Solução
+O processo pai utiliza a função fork() para criar o primeiro processo filho (filho 1). Quando o retorno de fork() é zero, significa que estamos no filho 1. O filho 1 executa um loop de 1000 iterações, soma 1 à variável n a cada iteração e, ao final, imprime a mensagem com seu PID e o valor de n depois das somas. Em seguida, ele termina sua execução usando exit(0) para não continuar lendo o resto do código.
+Como o filho 1 terminou, apenas o pai continua a execução e chama fork() novamente para criar o filho 2. O filho 2 executa um loop de 1000 iterações, soma 10 à variável n, imprime seu PID e valor de n depois das somas e também "morre" com exit(0). Novamente, apenas o pai continua e faz um terceiro fork() para criar o filho 3. O filho 3 faz um loop de 1000 iterações, soma 100 à variável n, imprime seu PID e valor de n depois das somas, e termina com exit(0). Por fim, o processo pai, que foi o único a chegar no final do código, utiliza waitpid() três vezes para garantir que só vai finalizar a sua própria execução após os três filhos terminarem.
+Os filhos executam simultaneamente em paralelo. A saída do programa imprime as seguintes mensagens (a ordem dos filhos pode variar na impressão):
+processo filho1, pid=xxxx, n=1001
+processo filho2, pid=yyyy, n=10001
+processo filho3, pid=zzzz, n=100001
+processo pai (pid=wwww) finalizando após esperar todos os filhos.
+Imagem com print no terminal:
+
+
+Observações e conclusões
+Durante o desenvolvimento do programa, foi possível observar aspectos importantes sobre a criação de processos irmãos. O primeiro aspecto que notamos que fala mais com o enunciado é que os valores da variável n impressos pelos processos são diferentes entre si.
+Isso acontece, e está consistente com o esperado, porque a cada vez que a função fork() é executada, o sistema operacional cria uma cópia isolada da memória do processo pai. Como o pai nunca altera o seu próprio n (que continua sendo 1 do começo ao fim), cada filho recebe uma cópia própria valendo 1. A partir daí, cada filho faz suas somas sem interferir no valor da variável dos outros irmãos, e a soma de cada um é diferente. 
+Outro ponto interessante que observamos para confirmar que executam em paralelo foi que a ordem das mensagens impressas no terminal não era fixa. Como os processos executam ao mesmo tempo, o sistema operacional decide qual processo ganha espaço a cada momento. 
+Uma dificuldade inicial (mas que conseguimos superar) foi entender que precisávamos colocar o exit(0) no final do código de cada filho. Sem isso, os filhos continuariam executando o código do pai e criariam outros processos indesejados. Depois que entendemos essa lógica, o laboratório foi muito tranquilo de ser realizado e tudo funcionou. De maneira geral, o laboratório foi tranquilo depois de compreendermos os termos a utilizar e como usar o fork() e o exit(0) da maneira correta. 
