@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// Lis Almeida || 2421294
+// Rafaela Bessa || 2420043
+
 int main(int argc, char *argv[]) {
     // Lê cada arquivo passado como parâmetro
     for (int i = 1; i < argc; i++) {

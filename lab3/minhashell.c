@@ -7,6 +7,9 @@
 #define MAX_LINHA 1024
 #define MAX_ARGS 100
 
+// Lis Almeida || 2421294
+// Rafaela Bessa || 2420043
+
 int main() {
     char linha[MAX_LINHA];
     char *args[MAX_ARGS];
@@ -23,7 +26,7 @@ int main() {
 
         if (strlen(linha) == 0) continue;
 
-        // 🔥 LIMPA o vetor args (ESSENCIAL)
+        // Limpa o vetor args (ESSENCIAL)
         for (int j = 0; j < MAX_ARGS; j++) {
             args[j] = NULL;
         }
