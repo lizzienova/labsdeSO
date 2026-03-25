@@ -11,7 +11,7 @@ int main(int argc, char *argv[]) {
             continue; // Pula para o próximo arquivo, se houver
         }
         
-        char caractere;
+        int caractere;
         // Lê caractere por caractere até o final do arquivo (EOF - End Of File)
         while ((caractere = fgetc(arquivo)) != EOF) {
             putchar(caractere); // Imprime na tela

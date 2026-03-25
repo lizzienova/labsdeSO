@@ -12,50 +12,53 @@ int main() {
     char *args[MAX_ARGS];
 
     while (1) {
-        printf("minhashell$ "); // O prompt da sua shell
+        printf("minhashell$ ");
         
-        // Lê a linha digitada pelo usuário
         if (fgets(linha, MAX_LINHA, stdin) == NULL) {
-            break; // Sai se pressionar Ctrl+D
+            break;
         }
 
-        // Remove a quebra de linha (\n) que o fgets captura no final
+        // Remove \n
         linha[strcspn(linha, "\n")] = 0;
 
-        // Se o usuário só apertar Enter, não faz nada
         if (strlen(linha) == 0) continue;
 
-        // "Pica" a string nos espaços em branco para separar comando e argumentos
+        // 🔥 LIMPA o vetor args (ESSENCIAL)
+        for (int j = 0; j < MAX_ARGS; j++) {
+            args[j] = NULL;
+        }
+
+        // Quebra a linha em argumentos
         int i = 0;
         char *pedaco = strtok(linha, " ");
-        while (pedaco != NULL) {
+        while (pedaco != NULL && i < MAX_ARGS - 1) {
             args[i++] = pedaco;
             pedaco = strtok(NULL, " ");
         }
-        args[i] = NULL; // O execvp exige que o último elemento do vetor seja NULL
+        args[i] = NULL;
 
-        // Comando especial para fechar a nossa shell
-        if (strcmp(args, "exit") == 0) {
-            break; 
+        // Segurança extra
+        if (args[0] == NULL) continue;
+
+        // Comando exit
+        if (strcmp(args[0], "exit") == 0) {
+            break;
         }
 
-        // --- A MÁGICA ACONTECE AQUI (A junção dos Labs anteriores com esse) ---
         pid_t pid = fork();
 
         if (pid < 0) {
             perror("Erro ao criar processo");
         } 
         else if (pid == 0) {
-            // CÓDIGO DO FILHO
-            // execvp procura o comando e o executa. Se falhar, retorna -1.
-            if (execvp(args, args) < 0) {
-                printf("%s: comando nao encontrado\n", args);
+            // Filho executa o comando
+            if (execvp(args[0], args) < 0) {
+                printf("%s: comando nao encontrado\n", args[0]);
                 exit(1);
             }
         } 
         else {
-            // CÓDIGO DO PAI
-            // A shell pai espera o comando (filho) terminar de rodar
+            // Pai espera
             waitpid(pid, NULL, 0);
         }
     }
