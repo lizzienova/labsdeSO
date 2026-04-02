@@ -9,14 +9,14 @@ int main() {
 
     // Criação do Filho 1
     if ((filho1 = fork()) == 0) {
-        char *args[] = {"yes", "--- Filho 1 Executando ---", NULL};
-        execvp(args, args); // 'yes' é um utilitário Unix que imprime a string em loop
+        char *args[] = {"yes", "--", "--- Filho 1 Executando ---", NULL};
+        execvp(args[0], args); // 'yes' é um utilitário Unix que imprime a string em loop
     }
 
     // Criação do Filho 2
     if ((filho2 = fork()) == 0) {
-        char *args[] = {"yes", "+++ Filho 2 Executando +++", NULL};
-        execvp(args, args);
+        char *args[] = {"yes", "--", "+++ Filho 2 Executando +++", NULL};
+        execvp(args[0], args);
     }
 
     printf("[Pai] Iniciando o escalonador por 15 segundos...\n");

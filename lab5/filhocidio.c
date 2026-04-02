@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
 
     if (pid == 0) { /* Código do Filho */
         
-        // DESCOMENTAR A OPÇÃO QUE DESEJA TESTAR
+        // DESCOMENTAR A OPÇÃO QUE QUERO TESTAR
 
         // a) loop eterno
         // for(;;); 
@@ -39,9 +39,9 @@ int main(int argc, char *argv[]) {
         // b) dorme 3 segundos
         // sleep(3); exit(0); 
 
-        // c e d) executa programa externo (passado via terminal, ex: ./filhocidio 10 sleep 5)
+        // c e d) executa programa externo
         if (argc >= 3) {
-            execvp(argv[2], &argv[2]);
+           execvp(argv[2], &argv[2]);
         } else {
             for(;;); 
         }
@@ -49,8 +49,10 @@ int main(int argc, char *argv[]) {
     } else { /* código do Pai */
         sscanf(argv[1], "%d", &delay);
         sleep(delay);
-        printf("Program exceeded limit of %d seconds! Matando o filho...\n", delay);
-        kill(pid, SIGKILL);
+        if (kill(pid, 0) == 0) {
+            printf("Program exceeded limit of %d seconds! Matando o filho...\n", delay);
+            kill(pid, SIGKILL);
+        }
         return 0;
     }
 }
