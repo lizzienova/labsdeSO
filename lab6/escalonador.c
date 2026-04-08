@@ -3,64 +3,83 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/time.h>
-#include <sys/types.h>
 
-// Função que representa o trabalho do processo filho
+//Rafaela Bessa 2420043
+//Lis Almeida 2421294
+
+pid_t p1, p2, p3;
+
+// rotina para tratar o ctrl-c (baseado no slide 15 do prof)
+void encerra_escalonador(int sinal) {
+    printf("\nmatando os filhos e encerrando...\n");
+    kill(p1, SIGKILL);
+    kill(p2, SIGKILL);
+    kill(p3, SIGKILL);
+    exit(0);
+}
+
+// rotina que os filhos vao rodar
 void loop_filho(char *nome) {
     while (1) {
-        // O filho fica em loop infinito; o SO o suspenderá via sinais
-        printf("Processo %s executando...\n", nome);
+        printf("processo %s executando...\n", nome);
         sleep(1);
     }
 }
 
-int main() {
-    pid_t p1, p2, p3;
+int main(void) {
     struct timeval t;
+    int ativo = 0; // 0=nenhum, 1=p1, 2=p2, 3=p3
 
-    // Criando os processos filhos
-    if ((p1 = fork()) == 0) loop_filho("P1");
-    if ((p2 = fork()) == 0) loop_filho("P2");
-    if ((p3 = fork()) == 0) loop_filho("P3");
+    // intercepta o ctrl-c
+    signal(SIGINT, encerra_escalonador);
 
-    // Inicialmente, paramos todos para que o escalonador assuma o controle
+    // cria os filhos
+    if ((p1 = fork()) == 0) loop_filho("p1");
+    if ((p2 = fork()) == 0) loop_filho("p2");
+    if ((p3 = fork()) == 0) loop_filho("p3");
+
+    // para todo mundo logo no inicio
     kill(p1, SIGSTOP);
     kill(p2, SIGSTOP);
     kill(p3, SIGSTOP);
 
-    printf("Escalonador iniciado. Pressione Ctrl+C para encerrar.\n");
+    printf("escalonador iniciado. ctrl-c para sair.\n");
 
+    // loop infinito do escalonador
     while (1) {
         gettimeofday(&t, NULL);
-        int segundo_atual = t.tv_sec % 60;
+        int seg = t.tv_sec % 60; // pega o segundo atual (0-59)
 
-        /* Lógica de Escalonamento:
-           P1: Inicia aos 5s, dura 20s (vai até 25s)
-           P2: Inicia aos 45s, dura 15s (vai até 60s/0s)
-           P3: Executa quando P1 e P2 estão parados
-        */
-
-        if (segundo_atual >= 5 && segundo_atual < 25) {
-            // Período de P1
-            kill(p1, SIGCONT);
-            kill(p2, SIGSTOP);
-            kill(p3, SIGSTOP);
+        if (seg >= 5 && seg < 25) {
+            if (ativo != 1) {
+                printf("\nturno do p1 [%02ds]\n", seg);
+                kill(p2, SIGSTOP);
+                kill(p3, SIGSTOP);
+                kill(p1, SIGCONT);
+                ativo = 1;
+            }
         } 
-        else if (segundo_atual >= 45 && segundo_atual < 60) {
-            // Período de P2
-            kill(p1, SIGSTOP);
-            kill(p2, SIGCONT);
-            kill(p3, SIGSTOP);
+        else if (seg >= 45 && seg < 60) {
+            if (ativo != 2) {
+                printf("\nturno do p2 [%02ds]\n", seg);
+                kill(p1, SIGSTOP);
+                kill(p3, SIGSTOP);
+                kill(p2, SIGCONT);
+                ativo = 2;
+            }
         } 
         else {
-            // Período de P3 (Folgas entre P1 e P2)
-            kill(p1, SIGSTOP);
-            kill(p2, SIGSTOP);
-            kill(p3, SIGCONT);
+            if (ativo != 3) {
+                printf("\n turno do p3 [%02ds]\n", seg);
+                kill(p1, SIGSTOP);
+                kill(p2, SIGSTOP);
+                kill(p3, SIGCONT);
+                ativo = 3;
+            }
         }
 
-        // Delay curto para evitar uso excessivo de CPU pelo escalonador
-        usleep(500000); // 0.5 segundos
+        // dorme meio segundo 
+        usleep(500000); 
     }
 
     return 0;
