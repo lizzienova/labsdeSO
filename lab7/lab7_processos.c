@@ -45,15 +45,15 @@ int main() {
     // aqui vê se são iguais
     int igual = 1;
     for (int i = 1; i < N; i++) {
-        if (vetor[i] != vetor) {
+        if (vetor[i] != vetor[0]) {
             igual = 0;
             break;
         }
     }
 
     printf("\nRESULTADO PROCESSOS\n");
-    printf("valores iguais? %s\n", igual ? "SIM" : "NAO");
-    printf("valor da posicao: %d\n", vetor);
+    printf("Valores iguais? %s\n", igual ? "SIM" : "NAO");
+    printf("Valor da posicao: %d\n", vetor[0]);
 
     return 0;
 }
