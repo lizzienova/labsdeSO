@@ -6,6 +6,8 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 
+
+
 #define N 10000
 #define TRABALHADORES 10
 
