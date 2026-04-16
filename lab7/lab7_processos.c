@@ -1,4 +1,3 @@
-// lab7_processos.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -6,7 +5,8 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 
-
+//Rafaela Bessa 2420043
+//Lis Almeida 2421294
 
 #define N 10000
 #define TRABALHADORES 10
@@ -18,44 +18,42 @@ int main() {
         vetor[i] = 5;
     }
 
-    //processos filhos
+    // processos filhos
     for (int i = 0; i < TRABALHADORES; i++) {
         if (fork() == 0) {
+            struct timeval t1, t2;
+            gettimeofday(&t1, NULL); // inicia o tempo DENTRO do filho (ignora a criacao)
+
             // vai alterando o vetor por processo feito
             for (int j = 0; j < N; j++) {
                 vetor[j] = vetor[j] * 2 + 2;
             }
+
+            gettimeofday(&t2, NULL); // para o tempo logo apos a matematica (ignora o termino)
+            long tempo = (t2.tv_sec - t1.tv_sec) * 1000000L + (t2.tv_usec - t1.tv_usec);
+            printf("Processo filho [%d] executou em: %ld microsegundos\n", getpid(), tempo);
+            
             exit(0);
         }
     }
 
-    //tempo
-    struct timeval t1, t2;
-    gettimeofday(&t1, NULL);
-
-    //espera
+    // espera
     for (int i = 0; i < TRABALHADORES; i++) {
         wait(NULL);
     }
 
-    gettimeofday(&t2, NULL);
-
-    long tempo = (t2.tv_sec - t1.tv_sec) * 1000000L +
-                 (t2.tv_usec - t1.tv_usec);
-
-    //aqui vê se são iguais
+    // aqui vê se são iguais
     int igual = 1;
     for (int i = 1; i < N; i++) {
-        if (vetor[i] != vetor[0]) {
+        if (vetor[i] != vetor) {
             igual = 0;
             break;
         }
     }
 
-    printf("=== PROCESSOS ===\n");
-    printf("Tempo: %ld microsegundos\n", tempo);
-    printf("Valores iguais? %s\n", igual ? "SIM" : "NAO");
-    printf("Valor final: %d\n", vetor[0]);
+    printf("\nRESULTADO PROCESSOS\n");
+    printf("valores iguais? %s\n", igual ? "SIM" : "NAO");
+    printf("valor da posicao: %d\n", vetor);
 
     return 0;
 }
