@@ -1,20 +1,28 @@
-#define SHM_NAME "/shm_tabela_pcb"
+// Lis Almeida || 2421294
+// Rafaela Bessa || 2420043
+
+// trabalho1_LisAlmeida_2421294_RafaelaBessa_2420043
+// relatoriot1_LisAlmeida_2421294_RafaelaBessa_2420043
+// comum.h
 #ifndef COMUM_H
 #define COMUM_H
 
 #include <sys/types.h>
 
-#define NUM_APPS 3    
-#define MAX_PC 6        //aqui é para definir a quantidade de processos já que tem que ser de 3 a 6
-#define MAX_FILA NUM_APPS
+#define MAX_PROCESSOS 6   
+#define NUM_APPS 3        
+#define MAX_PC 6          
 
-//Estados dos processos
+#define SHM_NAME "/shm_tabela_pcb"
+#define MSG_KEY 0x123456  
+
+#define TYPE_START_IO 1
+
 #define READY 0
 #define RUNNING 1
 #define BLOCKED 2
 #define TERMINATED 3
 
-//Bloco de Controle de Processo
 typedef struct {
     pid_t pid;
     int state;
@@ -22,9 +30,13 @@ typedef struct {
     char syscall_type; 
 } PCB;
 
-//Estrutura p Fila FIFO
 typedef struct {
-    int dados[MAX_FILA];
+    long msg_type;
+    int id_processo;
+} MensagemIPC;
+
+typedef struct {
+    int dados[MAX_PROCESSOS];
     int frente;
     int tras;
     int qtd;
