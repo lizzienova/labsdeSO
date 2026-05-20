@@ -1,9 +1,9 @@
-// app.c
+// App.c
 // Lis Almeida || 2421294
 // Rafaela Bessa || 2420043
 
-// trabalho1_LisAlmeida_2421294_RafaelaBessa_2420043
-// relatoriot1_LisAlmeida_2421294_RafaelaBessa_2420043
+// Trabalho1_LisAlmeida_2421294_RafaelaBessa_2420043
+// Relatoriot1_LisAlmeida_2421294_RafaelaBessa_2420043
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -34,13 +34,13 @@ int main(int argc, char *argv[]) {
     }
 
     pid_t kernel_pid = getppid();
-    printf("[A%d] Inicializado com sucesso (PID %d).\n", id + 1, getpid());
+    printf("[A%d] Inicializado.\n", id + 1);
 
     while (tabela[id].PC < MAX_PC) {
         sleep(1); 
         
         tabela[id].PC++; 
-        printf("   -> [A%d] Executando... Instrucao atual (PC = %d/%d)\n", id + 1, tabela[id].PC, MAX_PC);
+        printf("  -> [A%d] Executando PC=%d\n", id + 1, tabela[id].PC);
 
         int condicao_syscall = 0;
         char tipo_operacao = '0';
@@ -56,9 +56,9 @@ int main(int argc, char *argv[]) {
             tipo_operacao = 'R';
         }
 
-        // Se a condiçãobater, dispara a Syscall
+        // Se a condicao bater, dispara a Syscall
         if (condicao_syscall) {
-            printf("   !! [A%d] Executando Syscall(D1, %c) no PC=%d. Solicitando E/S...\n", id + 1, tipo_operacao, tabela[id].PC);
+            printf("  !! [A%d] Pedindo I/O (%c) no PC=%d\n", id + 1, tipo_operacao, tabela[id].PC);
             
             tabela[id].syscall_type = tipo_operacao; // Salva o parâmetro no contexto 
             kill(kernel_pid, SIGURG);                // Envia aviso de Syscall para o Kernel
@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
     }
 
     tabela[id].state = TERMINATED;
-    printf("[A%d] Execucao concluida com sucesso! Finalizando.\n", id + 1);
+    printf("[A%d] Finalizado.\n", id + 1);
     
     return 0;
 }

@@ -1,9 +1,9 @@
-// kernel_sim.c
+// Kernel_sim.c
 // Lis Almeida || 2421294
 // Rafaela Bessa || 2420043
 
-// trabalho1_LisAlmeida_2421294_RafaelaBessa_2420043
-// relatoriot1_LisAlmeida_2421294_RafaelaBessa_2420043
+// Trabalho1_LisAlmeida_2421294_RafaelaBessa_2420043
+// Relatoriot1_LisAlmeida_2421294_RafaelaBessa_2420043
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -61,44 +61,43 @@ void scheduler() {
         if (proc_atual != -1 && tabela[proc_atual].state == RUNNING) {
             tabela[proc_atual].state = READY;
             kill(tabela[proc_atual].pid, SIGSTOP);
-            printf("[KERNEL] Pausou A%d (Contexto Salvo: PC=%d)\n", proc_atual + 1, tabela[proc_atual].PC);
+            printf("[Kernel] Pausou A%d (PC=%d)\n", proc_atual + 1, tabela[proc_atual].PC);
         }
         
         proc_atual = proximo;
         tabela[proc_atual].state = RUNNING;
-        printf("[KERNEL] Escalonou A%d (Contexto Restaurado: PC=%d)\n", proc_atual + 1, tabela[proc_atual].PC);
+        printf("[Kernel] Retomou A%d (PC=%d)\n", proc_atual + 1, tabela[proc_atual].PC);
         kill(tabela[proc_atual].pid, SIGCONT);
     }
 }
 
 void handle_irq0(int sig) {
-    printf("[KERNEL] IRQ0 Recebido (Relogio): Fim do Timeslice do processo atual.\n");
     scheduler();
 }
 
 void handle_irq1(int sig) {
-    printf("[KERNEL] IRQ1 Recebido: Dispositivo D1 concluiu uma operacao.\n");
+    printf("[Kernel] IRQ1 recebido.\n");
     
     int id_liberado = pop_fila();
     
     if (id_liberado != -1) {
         tabela[id_liberado].state = READY;
-        tabela[id_liberado].syscall_type = '0'; // Limpa o parâmetro de syscall do contexto [cite: 50]
-        printf("[KERNEL] A%d removido da fila de wait -> Estado alterado para READY.\n", id_liberado + 1);
+        tabela[id_liberado].syscall_type = '0'; // Limpa o parâmetro de syscall do contexto
+        printf("[Kernel] A%d pronto apos I/O.\n", id_liberado + 1);
         
         // Se a CPU estiver desocupada, força o escalonamento
         if (proc_atual == -1 || tabela[proc_atual].state != RUNNING) {
             scheduler();
         }
     } else {
-        printf("[KERNEL] Aviso: IRQ1 recebido, mas a fila FIFO de I/O estava vazia.\n");
+        printf("[Kernel] Aviso: IRQ1 recebido, mas a fila FIFO estava vazia.\n");
     }
 }
 
 void handle_syscall(int sig) {
     if (proc_atual != -1) {
         char tipo = tabela[proc_atual].syscall_type; 
-        printf("[KERNEL] Syscall detectada de A%d (Tipo: %c). Bloqueando processo...\n", proc_atual + 1, tipo);
+        printf("[Kernel] Syscall(%c) de A%d. Bloqueando...\n", tipo, proc_atual + 1);
         
         // Modifica pra bloqueado
         tabela[proc_atual].state = BLOCKED;
@@ -142,7 +141,7 @@ int main() {
     signal(SIGUSR2, handle_irq1);
     signal(SIGURG, handle_syscall);
 
-    printf("[KERNEL] Simulador de Nucleo Operacional Iniciado com Fila FIFO.\n");
+    printf("Sistema iniciado.\n");
 
     for (int i = 0; i < NUM_APPS; i++) {
         pid_t pid = fork();
@@ -161,7 +160,7 @@ int main() {
     pid_t inter_pid = fork();
     if (inter_pid == 0) {
         char arg_pid[10];
-        // getppid() pega o PID do processo pai
+        // Pega o PID do processo pai
         sprintf(arg_pid, "%d", getppid()); 
         
         execl("./intercontroller", "./intercontroller", arg_pid, NULL); 
@@ -170,10 +169,9 @@ int main() {
         exit(1);
     }
 
-    printf("[KERNEL] Inicializando chaveamento preemptivo.\n");
     proc_atual = 0;
     tabela[proc_atual].state = RUNNING;
-    printf("[KERNEL] Executando primeiro processo: A1 (PC=0)\n");
+    printf("[Kernel] Executando A1 (PC=0)\n");
     kill(tabela[proc_atual].pid, SIGCONT);
 
     // Espera todas as aplicações terminarem
@@ -189,7 +187,7 @@ int main() {
     }
 
     // Preparando o fim do nosso sistema
-    printf("[KERNEL] Todos os processos de app concluiraram. Desligando hardware...\n");
+    printf("[Kernel] Todos finalizaram.\n");
     kill(inter_pid, SIGKILL);
     
     msgctl(msgid, IPC_RMID, NULL); 
@@ -197,6 +195,6 @@ int main() {
     shm_unlink(SHM_NAME);
     close(shm_fd);
 
-    printf("[KERNEL] Sistema encerrado com sucesso.\n");
+    printf("Sistema encerrado.\n");
     return 0;
 }
