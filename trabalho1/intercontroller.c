@@ -24,7 +24,7 @@ int main() {
     }
 
     // Array para gerenciar os timers de I/O
-    int timers_io[MAX_PROCESSOS] = {0}; 
+    int timers_arr[MAX_PROCESSOS] = {0}; 
 
     printf("[HW] Inicializado.\n");
 
@@ -43,8 +43,8 @@ int main() {
             
             // Acha um slot livre e seta o timer pra 3s
             for (int i = 0; i < MAX_PROCESSOS; i++) {
-                if (timers_io[i] == 0) {
-                    timers_io[i] = 3; 
+                if (timers_arr[i] == 0) {
+                    timers_arr[i] = 3; 
                     break;
                 }
             }
@@ -52,11 +52,11 @@ int main() {
 
         // Atualiza os timers ativos
         for (int i = 0; i < MAX_PROCESSOS; i++) {
-            if (timers_io[i] > 0) {
-                timers_io[i]--;
+            if (timers_arr[i] > 0) {
+                timers_arr[i]--;
                 
                 // Se o tempo de E/S esgotou
-                if (timers_io[i] == 0) {
+                if (timers_arr[i] == 0) {
                     printf("[HW] I/O concluido (IRQ1)\n");
                     
                     // Dispara IRQ1 pro Kernel

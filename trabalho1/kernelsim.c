@@ -19,7 +19,7 @@
 
 // Globais
 PCB *tabela;
-int proc_atual = -1;
+int processo_agr = -1;
 int msgid = -1;
 
 // Fila FIFO
@@ -34,7 +34,7 @@ void push_fila(int id_processo) {
     }
 }
 
-int pop_fila() {
+int retira_da_fila() {
     if (fila_io.qtd == 0) return -1;
     int id = fila_io.dados[fila_io.frente];
     fila_io.frente = (fila_io.frente + 1) % MAX_PROCESSOS;
@@ -48,7 +48,7 @@ void scheduler() {
     
     // Procura processo
     for (int i = 1; i <= NUM_APPS; i++) {
-        int idx = (proc_atual + i) % NUM_APPS;
+        int idx = (processo_agr + i) % NUM_APPS;
         if (tabela[idx].state == READY || tabela[idx].state == RUNNING) {
             proximo = idx;
             break;
@@ -56,21 +56,22 @@ void scheduler() {
     }
 
     // Se encontrou um processo diferente do atual p rodar
-    if (proximo != -1 && proximo != proc_atual) {
+    if (proximo != -1 && proximo != processo_agr) {
         // Pausa quem estava em exec
-        if (proc_atual != -1 && tabela[proc_atual].state == RUNNING) {
-            tabela[proc_atual].state = READY;
-            kill(tabela[proc_atual].pid, SIGSTOP);
-            printf("[Kernel] Pausou A%d (PC=%d)\n", proc_atual + 1, tabela[proc_atual].PC);
+        if (processo_agr != -1 && tabela[processo_agr].state == RUNNING) {
+            tabela[processo_agr].state = READY;
+            kill(tabela[processo_agr].pid, SIGSTOP);
+            printf("[Kernel] Pausou A%d (PC=%d)\n", processo_agr + 1, tabela[processo_agr].PC);
         }
         
-        proc_atual = proximo;
-        tabela[proc_atual].state = RUNNING;
-        printf("[Kernel] Retomou A%d (PC=%d)\n", proc_atual + 1, tabela[proc_atual].PC);
-        kill(tabela[proc_atual].pid, SIGCONT);
+        processo_agr = proximo;
+        tabela[processo_agr].state = RUNNING;
+        printf("[Kernel] Retomou A%d (PC=%d)\n", processo_agr + 1, tabela[processo_agr].PC);
+        kill(tabela[processo_agr].pid, SIGCONT);
     }
 }
 
+//func que garante a preempcao
 void handle_irq0(int sig) {
     scheduler();
 }
@@ -78,15 +79,15 @@ void handle_irq0(int sig) {
 void handle_irq1(int sig) {
     printf("[Kernel] IRQ1 recebido.\n");
     
-    int id_liberado = pop_fila();
+    int id_livre = retira_da_fila();
     
-    if (id_liberado != -1) {
-        tabela[id_liberado].state = READY;
-        tabela[id_liberado].syscall_type = '0'; // Limpa o parâmetro de syscall do contexto
-        printf("[Kernel] A%d pronto apos I/O.\n", id_liberado + 1);
+    if (id_livre != -1) {
+        tabela[id_livre].state = READY;
+        tabela[id_livre].syscall_type = '0'; // Limpa o parâmetro de syscall do contexto
+        printf("[Kernel] A%d pronto apos I/O.\n", id_livre + 1);
         
         // Se a CPU estiver desocupada, força o escalonamento
-        if (proc_atual == -1 || tabela[proc_atual].state != RUNNING) {
+        if (processo_agr == -1 || tabela[processo_agr].state != RUNNING) {
             scheduler();
         }
     } else {
@@ -95,24 +96,24 @@ void handle_irq1(int sig) {
 }
 
 void handle_syscall(int sig) {
-    if (proc_atual != -1) {
-        char tipo = tabela[proc_atual].syscall_type; 
-        printf("[Kernel] Syscall(%c) de A%d. Bloqueando...\n", tipo, proc_atual + 1);
+    if (processo_agr != -1) {
+        char tipo = tabela[processo_agr].syscall_type; 
+        printf("[Kernel] Syscall(%c) de A%d. Bloqueando...\n", tipo, processo_agr + 1);
         
         // Modifica pra bloqueado
-        tabela[proc_atual].state = BLOCKED;
+        tabela[processo_agr].state = BLOCKED;
         
         // Coloca o ID do processo na Fila FIFO
-        push_fila(proc_atual);
+        push_fila(processo_agr);
         
         MensagemIPC msg_aviso;
         msg_aviso.msg_type = TYPE_START_IO;
-        msg_aviso.id_processo = proc_atual;
+        msg_aviso.id_processo = processo_agr;
         if (msgsnd(msgid, &msg_aviso, sizeof(MensagemIPC) - sizeof(long), 0) == -1) {
             perror("[KERNEL] Erro ao enviar mensagem IPC para o Intercontroller");
         }
 
-        kill(tabela[proc_atual].pid, SIGSTOP);
+        kill(tabela[processo_agr].pid, SIGSTOP);
 
         scheduler();
     }
@@ -169,10 +170,10 @@ int main() {
         exit(1);
     }
 
-    proc_atual = 0;
-    tabela[proc_atual].state = RUNNING;
+    processo_agr = 0;
+    tabela[processo_agr].state = RUNNING;
     printf("[Kernel] Executando A1 (PC=0)\n");
-    kill(tabela[proc_atual].pid, SIGCONT);
+    kill(tabela[processo_agr].pid, SIGCONT);
 
     // Espera todas as aplicações terminarem
     int ativos = NUM_APPS;
