@@ -21,6 +21,7 @@
 PCB *tabela;
 int processo_agr = -1;
 int msgid = -1;
+int num_apps = 0; // NOVA GLOBAL PARA O MODO CORINGA
 
 // Fila FIFO
 FilaIO fila_io = { .frente = 0, .tras = 0, .qtd = 0 };
@@ -46,9 +47,9 @@ int retira_da_fila() {
 void scheduler() {
     int proximo = -1;
     
-    // Procura processo
-    for (int i = 1; i <= NUM_APPS; i++) {
-        int idx = (processo_agr + i) % NUM_APPS;
+    // Procura processo usando a variável num_apps dinâmica
+    for (int i = 1; i <= num_apps; i++) {
+        int idx = (processo_agr + i) % num_apps;
         if (tabela[idx].state == READY || tabela[idx].state == RUNNING) {
             proximo = idx;
             break;
@@ -119,7 +120,16 @@ void handle_syscall(int sig) {
     }
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    // LÊ O TERMINAL
+    if (argc > 1) {
+        num_apps = atoi(argv[1]);
+    } else {
+        num_apps = 3; // Padrão se não digitar nada
+    }
+
+    if (num_apps > MAX_PROCESSOS) num_apps = MAX_PROCESSOS;
+
     msgid = msgget(MSG_KEY, IPC_CREAT | 0666);
     if (msgid == -1) {
         perror("[KERNEL] Erro ao criar a fila de mensagens IPC");
@@ -142,14 +152,22 @@ int main() {
     signal(SIGUSR2, handle_irq1);
     signal(SIGURG, handle_syscall);
 
-    printf("Sistema iniciado.\n");
+    printf("Sistema iniciado com %d processos.\n", num_apps);
 
-    for (int i = 0; i < NUM_APPS; i++) {
+    for (int i = 0; i < num_apps; i++) {
         pid_t pid = fork();
         if (pid == 0) {
-            char arg_id[10];
+            char arg_id[20];
+            char arg_io[20] = "0"; // Por padrão ninguém faz I/O
+            
             sprintf(arg_id, "%d", i);
-            execl("./app", "./app", arg_id, NULL);
+
+            // A MÁGICA: Se pedir 6 processos, manda A3 (id 2) e A6 (id 5) pro disco
+            if (num_apps == 6 && (i == 2 || i == 5)) {
+                sprintf(arg_io, "1");
+            }
+
+            execl("./app", "./app", arg_id, arg_io, NULL);
             perror("[KERNEL] Erro no execl da app");
             exit(1);
         } else {
@@ -160,7 +178,7 @@ int main() {
 
     pid_t inter_pid = fork();
     if (inter_pid == 0) {
-        char arg_pid[10];
+        char arg_pid[20];
         // Pega o PID do processo pai
         sprintf(arg_pid, "%d", getppid()); 
         
@@ -176,10 +194,10 @@ int main() {
     kill(tabela[processo_agr].pid, SIGCONT);
 
     // Espera todas as aplicações terminarem
-    int ativos = NUM_APPS;
+    int ativos = num_apps;
     while (ativos > 0) {
         ativos = 0;
-        for (int i = 0; i < NUM_APPS; i++) {
+        for (int i = 0; i < num_apps; i++) {
             if (tabela[i].state != TERMINATED) {
                 ativos++;
             }

@@ -14,12 +14,14 @@
 #include "comum.h"
 
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "[APP] Erro: ID do processo nao fornecido.\n");
+    // Agora o app espera o ID e a ordem se deve fazer I/O ou não
+    if (argc < 3) {
+        fprintf(stderr, "[APP] Erro: Argumentos insuficientes.\n");
         return 1;
     }
     
     int id = atoi(argv[1]);
+    int faz_io = atoi(argv[2]); // 0 = Não faz I/O | 1 = Faz I/O
     
     int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
     if (shm_fd == -1) {
@@ -45,23 +47,18 @@ int main(int argc, char *argv[]) {
         int co_syscall = 0;
         char operacao = '0';
 
-        if (id == 0 && tabela[id].PC == 2) { 
+        // LÓGICA CORINGA: O Kernel mandou fazer I/O? Se sim, faz no PC=3.
+        if (faz_io == 1 && tabela[id].PC == 3) { 
             co_syscall = 1;
-            operacao = 'R';
-        } else if (id == 1 && tabela[id].PC == 3) { 
-            co_syscall = 1;
-            operacao = 'W';
-        } else if (id == 2 && tabela[id].PC == 4) {
-            co_syscall = 1;
-            operacao = 'R';
+            operacao = (id % 2 == 0) ? 'R' : 'W'; 
         }
 
         // Se a condicao bater, dispara a Syscall
         if (co_syscall) {
             printf("  !! [A%d] Pedindo I/O (%c) no PC=%d\n", id + 1, operacao, tabela[id].PC);
             
-            tabela[id].syscall_type = operacao; // Salva o parâmetro no contexto 
-            kill(kernel_pid, SIGURG);                // Envia aviso de Syscall para o Kernel
+            tabela[id].syscall_type = operacao; 
+            kill(kernel_pid, SIGURG);                
             
             usleep(50000); 
         }

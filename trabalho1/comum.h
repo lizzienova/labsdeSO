@@ -1,16 +1,14 @@
 // Lis Almeida || 2421294
 // Rafaela Bessa || 2420043
 
-// trabalho1_LisAlmeida_2421294_RafaelaBessa_2420043
-// relatoriot1_LisAlmeida_2421294_RafaelaBessa_2420043
-// comum.h
+// Trabalho1_LisAlmeida_2421294_RafaelaBessa_2420043
+// Relatoriot1_LisAlmeida_2421294_RafaelaBessa_2420043
 #ifndef COMUM_H
 #define COMUM_H
 
 #include <sys/types.h>
 
 #define MAX_PROCESSOS 6   
-#define NUM_APPS 3        
 #define MAX_PC 6          
 
 #define SHM_NAME "/shm_tabela_pcb"
