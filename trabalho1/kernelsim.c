@@ -18,10 +18,10 @@
 #include "comum.h"
 
 // Globais
-PCB *tabela;
+PCB *tab_pcb;
 int processo_agr = -1;
 int msgid = -1;
-int num_apps = 0; // NOVA GLOBAL PARA O MODO CORINGA
+int num_apps = 0;
 
 // Fila FIFO
 FilaIO fila_io = { .frente = 0, .tras = 0, .qtd = 0 };
@@ -50,7 +50,7 @@ void scheduler() {
     // Procura processo usando a variável num_apps dinâmica
     for (int i = 1; i <= num_apps; i++) {
         int idx = (processo_agr + i) % num_apps;
-        if (tabela[idx].state == READY || tabela[idx].state == RUNNING) {
+        if (tab_pcb[idx].state == READY || tab_pcb[idx].state == RUNNING) {
             proximo = idx;
             break;
         }
@@ -59,16 +59,16 @@ void scheduler() {
     // Se encontrou um processo diferente do atual p rodar
     if (proximo != -1 && proximo != processo_agr) {
         // Pausa quem estava em exec
-        if (processo_agr != -1 && tabela[processo_agr].state == RUNNING) {
-            tabela[processo_agr].state = READY;
-            kill(tabela[processo_agr].pid, SIGSTOP);
-            printf("[Kernel] Pausou A%d (PC=%d)\n", processo_agr + 1, tabela[processo_agr].PC);
+        if (processo_agr != -1 && tab_pcb[processo_agr].state == RUNNING) {
+            tab_pcb[processo_agr].state = READY;
+            kill(tab_pcb[processo_agr].pid, SIGSTOP);
+            printf("Kernel -> Pausou A%d (PC=%d)\n", processo_agr + 1, tab_pcb[processo_agr].PC);
         }
         
         processo_agr = proximo;
-        tabela[processo_agr].state = RUNNING;
-        printf("[Kernel] Retomou A%d (PC=%d)\n", processo_agr + 1, tabela[processo_agr].PC);
-        kill(tabela[processo_agr].pid, SIGCONT);
+        tab_pcb[processo_agr].state = RUNNING;
+        printf("Kernel -> Retomou A%d (PC=%d)\n", processo_agr + 1, tab_pcb[processo_agr].PC);
+        kill(tab_pcb[processo_agr].pid, SIGCONT);
     }
 }
 
@@ -78,31 +78,31 @@ void handle_irq0(int sig) {
 }
 
 void handle_irq1(int sig) {
-    printf("[Kernel] IRQ1 recebido.\n");
+    printf("Kernel -> IRQ1 recebido.\n");
     
     int id_livre = retira_da_fila();
     
     if (id_livre != -1) {
-        tabela[id_livre].state = READY;
-        tabela[id_livre].syscall_type = '0'; // Limpa o parâmetro de syscall do contexto
-        printf("[Kernel] A%d pronto apos I/O.\n", id_livre + 1);
-        
+        tab_pcb[id_livre].state = READY;
+        tab_pcb[id_livre].syscall_type = '0'; 
+        printf("Kernel -> A%d pronto apos I/O.\n", id_livre + 1);
+        printf("\n");
         // Se a CPU estiver desocupada, força o escalonamento
-        if (processo_agr == -1 || tabela[processo_agr].state != RUNNING) {
+        if (processo_agr == -1 || tab_pcb[processo_agr].state != RUNNING) {
             scheduler();
         }
     } else {
-        printf("[Kernel] Aviso: IRQ1 recebido, mas a fila FIFO estava vazia.\n");
+        printf("Kernel -> Aviso: IRQ1 recebido, mas a fila FIFO estava vazia.\n");
     }
 }
 
 void handle_syscall(int sig) {
     if (processo_agr != -1) {
-        char tipo = tabela[processo_agr].syscall_type; 
-        printf("[Kernel] Syscall(%c) de A%d. Bloqueando...\n", tipo, processo_agr + 1);
+        char tipo = tab_pcb[processo_agr].syscall_type; 
+        printf("Kernel -> Syscall(%c) de A%d. Bloqueando...\n", tipo, processo_agr + 1);
         
         // Modifica pra bloqueado
-        tabela[processo_agr].state = BLOCKED;
+        tab_pcb[processo_agr].state = BLOCKED;
         
         // Coloca o ID do processo na Fila FIFO
         push_fila(processo_agr);
@@ -111,10 +111,10 @@ void handle_syscall(int sig) {
         msg_aviso.msg_type = TYPE_START_IO;
         msg_aviso.id_processo = processo_agr;
         if (msgsnd(msgid, &msg_aviso, sizeof(MensagemIPC) - sizeof(long), 0) == -1) {
-            perror("[KERNEL] Erro ao enviar mensagem IPC para o Intercontroller");
+            perror("Kernel -> Erro ao enviar mensagem IPC para o Intercontroller");
         }
 
-        kill(tabela[processo_agr].pid, SIGSTOP);
+        kill(tab_pcb[processo_agr].pid, SIGSTOP);
 
         scheduler();
     }
@@ -125,28 +125,28 @@ int main(int argc, char *argv[]) {
     if (argc > 1) {
         num_apps = atoi(argv[1]);
     } else {
-        num_apps = 3; // Padrão se não digitar nada
+        num_apps = 3;
     }
 
     if (num_apps > MAX_PROCESSOS) num_apps = MAX_PROCESSOS;
 
     msgid = msgget(MSG_KEY, IPC_CREAT | 0666);
     if (msgid == -1) {
-        perror("[KERNEL] Erro ao criar a fila de mensagens IPC");
+        perror("Kernel-> Erro ao na fila de mensagens IPC");
         exit(1);
     }
     int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
     if (shm_fd == -1) {
-        perror("[KERNEL] Erro ao criar memoria compartilhada");
+        perror("Kernel-> Erro ao criar memoria compartilhada");
         exit(1);
     }
     ftruncate(shm_fd, sizeof(PCB) * MAX_PROCESSOS);
-    tabela = mmap(NULL, sizeof(PCB) * MAX_PROCESSOS, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    tab_pcb = mmap(NULL, sizeof(PCB) * MAX_PROCESSOS, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     for (int i = 0; i < MAX_PROCESSOS; i++) {
-        tabela[i].pid = 0;
-        tabela[i].state = READY;
-        tabela[i].PC = 0;
-        tabela[i].syscall_type = '0';
+        tab_pcb[i].pid = 0;
+        tab_pcb[i].state = READY;
+        tab_pcb[i].PC = 0;
+        tab_pcb[i].syscall_type = '0';
     }
     signal(SIGUSR1, handle_irq0);
     signal(SIGUSR2, handle_irq1);
@@ -158,20 +158,19 @@ int main(int argc, char *argv[]) {
         pid_t pid = fork();
         if (pid == 0) {
             char arg_id[20];
-            char arg_io[20] = "0"; // Por padrão ninguém faz I/O
+            char arg_io[20] = "0";
             
             sprintf(arg_id, "%d", i);
 
-            // A MÁGICA: Se pedir 6 processos, manda A3 (id 2) e A6 (id 5) pro disco
             if (num_apps == 6 && (i == 2 || i == 5)) {
                 sprintf(arg_io, "1");
             }
 
             execl("./app", "./app", arg_id, arg_io, NULL);
-            perror("[KERNEL] Erro no execl da app");
+            perror("Kernel -> Erro no execl da app");
             exit(1);
         } else {
-            tabela[i].pid = pid;
+            tab_pcb[i].pid = pid;
             kill(pid, SIGSTOP);
         }
     }
@@ -184,21 +183,21 @@ int main(int argc, char *argv[]) {
         
         execl("./intercontroller", "./intercontroller", arg_pid, NULL); 
         
-        perror("[KERNEL] Erro no execl do intercontroller");
+        perror("Kernel -> Erro no execl do intercontroller");
         exit(1);
     }
 
     processo_agr = 0;
-    tabela[processo_agr].state = RUNNING;
-    printf("[Kernel] Executando A1 (PC=0)\n");
-    kill(tabela[processo_agr].pid, SIGCONT);
+    tab_pcb[processo_agr].state = RUNNING;
+    printf("Kernel -> Executando A1 (PC=0)\n");
+    kill(tab_pcb[processo_agr].pid, SIGCONT);
 
     // Espera todas as aplicações terminarem
     int ativos = num_apps;
     while (ativos > 0) {
         ativos = 0;
         for (int i = 0; i < num_apps; i++) {
-            if (tabela[i].state != TERMINATED) {
+            if (tab_pcb[i].state != TERMINATED) {
                 ativos++;
             }
         }
@@ -206,14 +205,14 @@ int main(int argc, char *argv[]) {
     }
 
     // Preparando o fim do nosso sistema
-    printf("[Kernel] Todos finalizaram.\n");
+    printf("Kernel -> Todos conseguiram finalizar.\n");
     kill(inter_pid, SIGKILL);
     
     msgctl(msgid, IPC_RMID, NULL); 
-    munmap(tabela, sizeof(PCB) * MAX_PROCESSOS);
+    munmap(tab_pcb, sizeof(PCB) * MAX_PROCESSOS);
     shm_unlink(SHM_NAME);
     close(shm_fd);
 
-    printf("Sistema encerrado.\n");
+    printf("Sistema finalizado.\n");
     return 0;
 }

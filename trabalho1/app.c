@@ -16,7 +16,7 @@
 int main(int argc, char *argv[]) {
     // Agora o app espera o ID e a ordem se deve fazer I/O ou não
     if (argc < 3) {
-        fprintf(stderr, "[APP] Erro: Argumentos insuficientes.\n");
+        fprintf(stderr, "App -> Erro: Argumentos insuficientes.\n");
         return 1;
     }
     
@@ -25,37 +25,36 @@ int main(int argc, char *argv[]) {
     
     int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
     if (shm_fd == -1) {
-        perror("[APP] Erro ao abrir memoria compartilhada");
+        perror("App -> Erro ao abrir memoria compartilhada");
         return 1;
     }
     
     PCB *tabela = mmap(NULL, sizeof(PCB) * MAX_PROCESSOS, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (tabela == MAP_FAILED) {
-        perror("[APP] Erro no mmap");
+        perror("App -> Erro no mmap");
         return 1;
     }
 
     pid_t kernel_pid = getppid();
-    printf("[A%d] Inicializado.\n", id + 1);
+    printf("Processo A%d Inicializado.\n", id + 1);
 
     while (tabela[id].PC < MAX_PC) {
         sleep(1); 
         
         tabela[id].PC++; 
-        printf("  -> [A%d] Executando PC=%d\n", id + 1, tabela[id].PC);
+        printf("  -> Processo A%d Executando PC=%d\n", id + 1, tabela[id].PC);
 
         int co_syscall = 0;
         char operacao = '0';
 
-        // LÓGICA CORINGA: O Kernel mandou fazer I/O? Se sim, faz no PC=3.
+
         if (faz_io == 1 && tabela[id].PC == 3) { 
             co_syscall = 1;
             operacao = (id % 2 == 0) ? 'R' : 'W'; 
         }
 
-        // Se a condicao bater, dispara a Syscall
         if (co_syscall) {
-            printf("  !! [A%d] Pedindo I/O (%c) no PC=%d\n", id + 1, operacao, tabela[id].PC);
+            printf("  !! Processo A%d Pedindo I/O (%c) no PC=%d\n", id + 1, operacao, tabela[id].PC);
             
             tabela[id].syscall_type = operacao; 
             kill(kernel_pid, SIGURG);                
@@ -65,7 +64,7 @@ int main(int argc, char *argv[]) {
     }
 
     tabela[id].state = TERMINATED;
-    printf("[A%d] Finalizado.\n", id + 1);
+    printf("Processo A%d Finalizado.\n", id + 1);
     
     return 0;
 }

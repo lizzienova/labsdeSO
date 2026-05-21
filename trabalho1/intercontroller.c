@@ -19,7 +19,7 @@ int main() {
     // Conecta na fila de mensagens IPC
     int msgid = msgget(MSG_KEY, 0666);
     if (msgid == -1) {
-        perror("[INTERCONTROLLER] Erro ao obter a fila de mensagens");
+        perror("Intercontroller -> Erro ao obter a fila de mensagens\n");
         exit(1);
     }
 
