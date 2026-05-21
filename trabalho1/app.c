@@ -42,25 +42,25 @@ int main(int argc, char *argv[]) {
         tabela[id].PC++; 
         printf("  -> [A%d] Executando PC=%d\n", id + 1, tabela[id].PC);
 
-        int condicao_syscall = 0;
-        char tipo_operacao = '0';
+        int co_syscall = 0;
+        char operacao = '0';
 
         if (id == 0 && tabela[id].PC == 2) { 
-            condicao_syscall = 1;
-            tipo_operacao = 'R';
+            co_syscall = 1;
+            operacao = 'R';
         } else if (id == 1 && tabela[id].PC == 3) { 
-            condicao_syscall = 1;
-            tipo_operacao = 'W';
+            co_syscall = 1;
+            operacao = 'W';
         } else if (id == 2 && tabela[id].PC == 4) {
-            condicao_syscall = 1;
-            tipo_operacao = 'R';
+            co_syscall = 1;
+            operacao = 'R';
         }
 
         // Se a condicao bater, dispara a Syscall
-        if (condicao_syscall) {
-            printf("  !! [A%d] Pedindo I/O (%c) no PC=%d\n", id + 1, tipo_operacao, tabela[id].PC);
+        if (co_syscall) {
+            printf("  !! [A%d] Pedindo I/O (%c) no PC=%d\n", id + 1, operacao, tabela[id].PC);
             
-            tabela[id].syscall_type = tipo_operacao; // Salva o parâmetro no contexto 
+            tabela[id].syscall_type = operacao; // Salva o parâmetro no contexto 
             kill(kernel_pid, SIGURG);                // Envia aviso de Syscall para o Kernel
             
             usleep(50000); 
