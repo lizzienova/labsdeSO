@@ -1,4 +1,4 @@
-// Intercontroller.c
+// intercontroller.c
 // Lis Almeida || 2421294
 // Rafaela Bessa || 2420043
 
@@ -10,60 +10,55 @@
 #include <signal.h>
 #include <sys/msg.h>
 #include <sys/types.h>
-#include "comum.h"
+#include "definicoes.h"
 
 int main() {
-    // Pega o PID do kernel (processo pai)
-    pid_t kernel_pid = getppid();
+    pid_t pid_so = getppid();
 
-    // Conecta na fila de mensagens IPC
-    int msgid = msgget(MSG_KEY, 0666);
-    if (msgid == -1) {
+    // conecta na fila de msg pra ouvir o kernel
+    int id_caixa_msg = msgget(MSG_KEY, 0666);
+    if (id_caixa_msg == -1) {
         perror("Intercontroller -> Erro ao obter a fila de mensagens\n");
         exit(1);
     }
 
-    // Array para gerenciar os timers de I/O
-    int timers_arr[MAX_PROCESSOS] = {0}; 
+    // array pra guardar os 3 seg de cada processo q ta no disco
+    int cronometros_io [ MAX_PROCESSOS ]  = {0}; 
 
     printf("[HW] Inicializado.\n");
 
-    // Loop principal do hardware
+    // loop eterno do hardware
     while (1) {
-        // Espera 1 segundo (clock)
-        sleep(1);
+        sleep(1); // batida do relogio
         
-        // Manda IRQ0 pro Kernel (fim do timeslice)
-        kill(kernel_pid, SIGUSR1); 
+        kill(pid_so, SIGUSR1); // manda o irq0 (time slice)
 
-        // Checa se tem novo pedido de I/O na fila
-        MensagemIPC msg;
-        while (msgrcv(msgid, &msg, sizeof(MensagemIPC) - sizeof(long), TYPE_START_IO, IPC_NOWAIT) != -1) {
-            printf("[HW] Novo pedido de I/O (Slot %d)\n", msg.id_processo);
+        AvisoHardware pacote_recebido;
+        // checa se chegou msg nova de alguem pedindo io (nao bloqueante)
+        while (msgrcv(id_caixa_msg, &pacote_recebido, sizeof(AvisoHardware) - sizeof(long), TYPE_START_IO, IPC_NOWAIT) != -1) {
+            printf("[HW] Novo pedido de I/O (Slot %d)\n", pacote_recebido.id_do_app);
             
-            // Acha um slot livre e seta o timer pra 3s
-            for (int i = 0; i < MAX_PROCESSOS; i++) {
-                if (timers_arr[i] == 0) {
-                    timers_arr[i] = 3; 
+            // acha um espaco vazio nos cronometros e seta 3 segundos
+            for (int k = 0; k < MAX_PROCESSOS; k++) {
+                if (cronometros_io [ k ]  == 0) {
+                    cronometros_io [ k ]  = 3; 
                     break;
                 }
             }
         }
 
-        // Atualiza os timers ativos
-        for (int i = 0; i < MAX_PROCESSOS; i++) {
-            if (timers_arr[i] > 0) {
-                timers_arr[i]--;
+        // diminui o tempo de todo mundo que ta processando io
+        for (int c = 0; c < MAX_PROCESSOS; c++) {
+            if (cronometros_io [ c ]  > 0) {
+                cronometros_io [ c ] --;
                 
-                // Se o tempo de E/S esgotou
-                if (timers_arr[i] == 0) {
+                // se zerou o tempo, avisa q acabou
+                if (cronometros_io [ c ]  == 0) {
                     printf("[HW] I/O concluido (IRQ1)\n");
                     
-                    // Dispara IRQ1 pro Kernel
-                    kill(kernel_pid, SIGUSR2);
+                    kill(pid_so, SIGUSR2); // manda o irq1 pro kernel
                     
-                    // Evita encavalamento de sinais
-                    usleep(50000); 
+                    usleep(50000); // delay de seguranca
                 }
             }
         }
