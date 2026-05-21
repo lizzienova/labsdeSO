@@ -1,3 +1,6 @@
+// kernel_sim.c
+// Lis Almeida || 2421294
+// Rafaela Bessa || 2420043
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -9,209 +12,227 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/msg.h>
-#include "comum.h"
+#include "definicoes.h"
+#include "fila.h"
 
-// Variáveis Globais (Como é o Kernel, essas variáveis não são compartilhadas com as apps)
-PCB *tabela;          // Ponteiro para a memória compartilhada.
-int proc_atual = -1;  // Índice do processo que detém a CPU no momento.
-int msgid = -1;       // ID da fila de mensagens IPC.
-FilaIO fila_io = { .frente = 0, .tras = 0, .qtd = 0 };
+// ponteiro pra memoria compartilhada (pcb)
+BlocoProcesso *tabela_processos; 
+// variavel pra guardar qual id ta rodando agora
+int rodando_agora = -1;          
+// id da fila de mensagens ipc
+int caixa_correio = -1;          
+// quantidade de processos passada no terminal
+int total_programas = 0;         
+// estrutura da fila do disco
+FilaEsperaDisco fila_hd;         
 
-// =========================================================================
-// GERENCIAMENTO DA FILA FIFO (Para Processos em BLOCKED)
-// =========================================================================
-void push_fila(int id_processo) {
-    if (fila_io.qtd < MAX_PROCESSOS) {
-        fila_io.dados[fila_io.tras] = id_processo;
-        fila_io.tras = (fila_io.tras + 1) % MAX_PROCESSOS;
-        fila_io.qtd++;
-    }
-}
-
-int pop_fila() {
-    if (fila_io.qtd == 0) return -1;
-    int id = fila_io.dados[fila_io.frente];
-    fila_io.frente = (fila_io.frente + 1) % MAX_PROCESSOS;
-    fila_io.qtd--;
-    return id; // Retorna sempre o processo que está esperando há mais tempo (FIFO).
-}
-
-// =========================================================================
-// ALGORITMO DE ESCALONAMENTO (ROUND-ROBIN)
-// =========================================================================
-void scheduler() {
-    int proximo = -1;
+// logica do escalonador round robin
+void rodar_escalonador_rr() {
+    int candidato = -1;
     
-    // Busca Circular: Começa olhando o próximo elemento (proc_atual + 1).
-    // O operador módulo (%) garante que se passar do limite, volta para o índice 0.
-    for (int i = 1; i <= NUM_APPS; i++) {
-        int idx = (proc_atual + i) % NUM_APPS;
-        // O Kernel só entrega a CPU para quem está PRONTO ou já está RODANDO.
-        // Processos BLOCKED (esperando disco) são completamente ignorados aqui.
-        if (tabela[idx].state == READY || tabela[idx].state == RUNNING) {
-            proximo = idx;
-            break;
+    // roda o array procurando o proximo disponivel (ready ou running)
+    for (int i = 1; i <= total_programas; i++) {
+        // o % faz voltar pro 0 se passar do limite
+        int indice_teste = (rodando_agora + i) % total_programas;
+        
+        if (tabela_processos[indice_teste].estado_atual == READY || tabela_processos[indice_teste].estado_atual == RUNNING) {
+            candidato = indice_teste;
+            break; 
         }
     }
 
-    if (proximo != -1 && proximo != proc_atual) {
-        // PREEMPÇÃO (Context Switch): Arranca a CPU do processo atual.
-        if (proc_atual != -1 && tabela[proc_atual].state == RUNNING) {
-            tabela[proc_atual].state = READY; 
-            // O sinal SIGSTOP congela o processo no Linux, preservando todos os registradores.
-            kill(tabela[proc_atual].pid, SIGSTOP); 
-            printf("[Kernel] Pausou A%d (PC=%d)\n", proc_atual + 1, tabela[proc_atual].PC);
+    // se achou um proximo diferente do atual, faz a troca de contexto
+    if (candidato != -1 && candidato != rodando_agora) {
+        
+        // pausa quem tava rodando antes
+        if (rodando_agora != -1 && tabela_processos[rodando_agora].estado_atual == RUNNING) {
+            tabela_processos[rodando_agora].estado_atual = READY; 
+            kill(tabela_processos[rodando_agora].pid_real, SIGSTOP); 
+            printf("Kernel -> Pausou A%d (PC=%d)\n", rodando_agora + 1, tabela_processos[rodando_agora].contador_instrucoes);
         }
         
-        // Atribui a CPU para o novo processo selecionado.
-        proc_atual = proximo;
-        tabela[proc_atual].state = RUNNING;
-        printf("[Kernel] Retomou A%d (PC=%d)\n", proc_atual + 1, tabela[proc_atual].PC);
-        // O sinal SIGCONT restaura a execução do processo exatamente de onde parou.
-        kill(tabela[proc_atual].pid, SIGCONT); 
+        // bota o novo candidato pra rodar
+        rodando_agora = candidato;
+        tabela_processos[rodando_agora].estado_atual = RUNNING; 
+        printf("Kernel -> Retomou A%d (PC=%d)\n", rodando_agora + 1, tabela_processos[rodando_agora].contador_instrucoes);
+        kill(tabela_processos[rodando_agora].pid_real, SIGCONT); 
     }
 }
 
-// =========================================================================
-// MANIPULADORES DE SINAIS (Handlers) - As interrupções do sistema
-// =========================================================================
-
-// Tratador do IRQ0 (Fim do Timeslice / Interrupção de Relógio)
-void handle_irq0(int sig) {
-    // Preempção involuntária: O processo não quis sair da CPU, mas o tempo acabou.
-    scheduler(); 
+// trata o sinal do clock (irq0)
+void sinal_clock_recebido(int sig) {
+    // chama o escalonador pra passar a vez
+    rodar_escalonador_rr(); 
 }
 
-// Tratador do IRQ1 (Término da Operação de E/S do Hardware)
-void handle_irq1(int sig) {
-    printf("[Kernel] IRQ1 recebido.\n");
+// trata o sinal de fim de io (irq1)
+void sinal_disco_recebido(int sig) {
+    printf("Kernel -> IRQ1 recebido.\n");
     
-    // Libera quem pediu I/O primeiro (Garante que não haja "Starvation").
-    int id_liberado = pop_fila(); 
+    // tira o primeiro da fila do disco
+    int proc_liberado = tirar_do_disco(&fila_hd);
     
-    if (id_liberado != -1) {
-        // Restaura o contexto para a fila de execução da CPU.
-        tabela[id_liberado].state = READY; 
-        tabela[id_liberado].syscall_type = '0'; // Limpa o parâmetro da Syscall.
-        printf("[Kernel] A%d pronto apos I/O.\n", id_liberado + 1);
+    if (proc_liberado != -1) {
+        // bota o processo de volta como ready e limpa o io
+        tabela_processos[proc_liberado].estado_atual = READY; 
+        tabela_processos[proc_liberado].tipo_operacao = '0';  
+        printf("Kernel -> A%d pronto apos I/O.\n", proc_liberado + 1);
+        printf("\n");
+
+        // se a cpu estiver ociosa, ja forca o escalonamento na hora
+        if (rodando_agora == -1 || tabela_processos[rodando_agora].estado_atual != RUNNING) {
+            rodar_escalonador_rr();
+        }
+    } else {
+        printf("Kernel -> Aviso: IRQ1 recebido, mas a fila FIFO estava vazia.\n");
+    }
+}
+
+// trata a chamada de sistema (syscall) de io
+void chamada_sistema_recebida(int sig) {
+    if (rodando_agora != -1) {
+        char req = tabela_processos[rodando_agora].tipo_operacao; 
+        printf("Kernel -> Syscall(%c) de A%d. Bloqueando...\n", req, rodando_agora + 1);
         
-        // Otimização de CPU: Se o sistema estava totalmente ocioso (todos bloqueados),
-        // força um escalonamento imediato para não desperdiçar ciclos de relógio.
-        if (proc_atual == -1 || tabela[proc_atual].state != RUNNING) {
-            scheduler();
+        // muda o estado pra bloqueado
+        tabela_processos[rodando_agora].estado_atual = BLOCKED;
+        
+        // poe na fila do disco
+        colocar_no_disco(&fila_hd, rodando_agora);
+        
+        // manda mensagem pro intercontroller avisando que tem io
+        AvisoHardware alerta;
+        alerta.tipo_msg = TYPE_START_IO;
+        alerta.id_do_app = rodando_agora;
+        if (msgsnd(caixa_correio, &alerta, sizeof(AvisoHardware) - sizeof(long), 0) == -1) {
+            perror("Kernel -> Erro ao enviar mensagem IPC");
+        }
+
+        // trava o aplicativo pra ele nao rodar mais
+        kill(tabela_processos[rodando_agora].pid_real, SIGSTOP);
+        
+        // ja chama o escalonador proximo pra nao desperdicar cpu
+        rodar_escalonador_rr();
+    }
+}
+
+int main(int argc, char *argv[]) {
+    // le a quantidade de processos passada no comando
+    if (argc > 1) {
+        total_programas = atoi(argv[1]);
+    } else {
+        total_programas = 3; // 3 por padrao
+    }
+
+    if (total_programas > MAX_PROCESSOS) total_programas = MAX_PROCESSOS;
+
+    inicializar_fila(&fila_hd);
+
+    // cria a fila de mensagens ipc
+    caixa_correio = msgget(MSG_KEY, IPC_CREAT | 0666);
+    if (caixa_correio == -1) {
+        perror("Kernel-> Erro ao na fila de mensagens IPC");
+        exit(1);
+    }
+    
+    // cria a memoria compartilhada
+    int fd_mem_compartilhada = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
+    if (fd_mem_compartilhada == -1) {
+        perror("Kernel-> Erro ao criar memoria compartilhada");
+        exit(1);
+    }
+    
+    // ajusta o tamanho da memoria pro tamanho do array de pcbs
+    ftruncate(fd_mem_compartilhada, sizeof(BlocoProcesso) * MAX_PROCESSOS);
+    
+    // mapeia pra variavel local do kernel
+    tabela_processos = mmap(NULL, sizeof(BlocoProcesso) * MAX_PROCESSOS, PROT_READ | PROT_WRITE, MAP_SHARED, fd_mem_compartilhada, 0);
+    
+    // inicializa o pcb de todo mundo como ready
+    for (int j = 0; j < MAX_PROCESSOS; j++) {
+        tabela_processos[j].pid_real = 0;
+        tabela_processos[j].estado_atual = READY;
+        tabela_processos[j].contador_instrucoes = 0;
+        tabela_processos[j].tipo_operacao = '0';
+    }
+    
+    // associa os sinais com as funcoes handlers
+    signal(SIGUSR1, sinal_clock_recebido);
+    signal(SIGUSR2, sinal_disco_recebido);
+    signal(SIGURG, chamada_sistema_recebida);
+
+    printf("Sistema iniciado com %d processos.\n", total_programas);
+
+    // cria todos os processos de aplicacao com fork
+    for (int w = 0; w < total_programas; w++) {
+        pid_t pid_filho = fork(); 
+        
+        if (pid_filho == 0) { 
+            char param_id[20];
+            char param_io[20] = "0";
+            
+            sprintf(param_id, "%d", w);
+
+            // se for 6 processos, passa permissao 1 pro a3 e a6
+            if (total_programas == 6 && (w == 2 || w == 5)) {
+                sprintf(param_io, "1");
+            }
+
+            // substitui o codigo pelo executavel da aplicacao
+            execl("./aplicacao", "./aplicacao", param_id, param_io, NULL);
+            perror("Kernel -> Erro no execl da app");
+            exit(1);
+        } else { 
+            // o kernel pai salva o pid e pausa o filho
+            tabela_processos[w].pid_real = pid_filho;
+            kill(pid_filho, SIGSTOP);
         }
     }
-}
 
-// Tratador da Syscall (A aplicação disparou um SIGURG)
-void handle_syscall(int sig) {
-    if (proc_atual != -1) {
-        char tipo = tabela[proc_atual].syscall_type; 
-        printf("[Kernel] Syscall(%c) de A%d. Bloqueando...\n", tipo, proc_atual + 1);
+    // cria o processo simulador de hardware com fork
+    pid_t pid_hardware = fork(); 
+    if (pid_hardware == 0) {
+        char param_pid_pai[20];
+        // passa o pid do kernel pra ele poder mandar sinais de volta
+        sprintf(param_pid_pai, "%d", getppid()); 
         
-        // Preempção voluntária: O processo abdica da CPU para aguardar o disco.
-        tabela[proc_atual].state = BLOCKED; 
-        push_fila(proc_atual);              
+        execl("./intercontroller", "./intercontroller", param_pid_pai, NULL); 
         
-        // Envia comando para a placa controladora (Hardware) via IPC.
-        MensagemIPC msg_aviso;
-        msg_aviso.msg_type = TYPE_START_IO;
-        msg_aviso.id_processo = proc_atual;
-        // msgsnd empilha a mensagem no SO de forma síncrona.
-        msgsnd(msgid, &msg_aviso, sizeof(MensagemIPC) - sizeof(long), 0);
-
-        // Remove o processo da CPU imediatamente.
-        kill(tabela[proc_atual].pid, SIGSTOP);
-
-        // Invoca o escalonador para que a CPU atenda o próximo processo da fila READY.
-        scheduler();
+        perror("Kernel -> Erro no execl do intercontroller");
+        exit(1);
     }
-}
 
-// =========================================================================
-// INICIALIZAÇÃO DO NÚCLEO (Main)
-// =========================================================================
-int main() {
-    // 1. IPC: Cria a Fila de Mensagens System V (Com permissão global 0666).
-    msgid = msgget(MSG_KEY, IPC_CREAT | 0666);
-    
-    // 2. MEMÓRIA COMPARTILHADA: Cria o objeto de memória POSIX.
-    int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
-    // Ajusta fisicamente o tamanho do arquivo virtual para caber o vetor de PCBs.
-    ftruncate(shm_fd, sizeof(PCB) * MAX_PROCESSOS); 
-    
-    // 3. MMAP: Mapeia o arquivo virtual para o espaço de endereçamento deste processo.
-    // MAP_SHARED indica que alterações feitas aqui refletirão nos processos filhos.
-    tabela = mmap(NULL, sizeof(PCB) * MAX_PROCESSOS, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    
-    for (int i = 0; i < MAX_PROCESSOS; i++) {
-        tabela[i].pid = 0;
-        tabela[i].state = READY;
-        tabela[i].PC = 0;
-        tabela[i].syscall_type = '0';
-    }
-    
-    // 4. TABELA DE VETORES DE INTERRUPÇÃO (Mapeando os Sinais)
-    // Sobrescreve o comportamento padrão do Linux para apontar para as nossas funções.
-    signal(SIGUSR1, handle_irq0); 
-    signal(SIGUSR2, handle_irq1); 
-    signal(SIGURG, handle_syscall); 
+    // comeca rodando o primeiro da fila
+    rodando_agora = 0; 
+    tabela_processos[rodando_agora].estado_atual = RUNNING;
+    printf("Kernel -> Executando A1 (PC=0)\n");
+    kill(tabela_processos[rodando_agora].pid_real, SIGCONT); 
 
-    printf("Sistema iniciado.\n");
-
-    // 5. CRIAÇÃO DE PROCESSOS (FORK + EXEC)
-    for (int i = 0; i < NUM_APPS; i++) {
-        pid_t pid = fork(); // Duplica o processo (cria um filho).
-        if (pid == 0) {
-            // Ambiente do Filho: Substitui o binário do Kernel pelo binário da Aplicação.
-            char arg_id[10];
-            sprintf(arg_id, "%d", i);
-            execl("./app", "./app", arg_id, NULL); 
-        } else {
-            // Ambiente do Pai (Kernel): Registra o PID na tabela.
-            tabela[i].pid = pid;
-            // GARANTIA DE SINCRONISMO: Congela o processo filho imediatamente após a criação
-            // para garantir que ele só execute quando o Escalonador decidir.
-            kill(pid, SIGSTOP); 
+    // laco pra manter o kernel ativo ate os apps terminarem
+    int rodando_ativos = total_programas;
+    while (rodando_ativos > 0) {
+        rodando_ativos = 0; 
+        for (int z = 0; z < total_programas; z++) {
+            if (tabela_processos[z].estado_atual != TERMINATED) {
+                rodando_ativos++; 
+            }
         }
-    }
-
-    // Criação do Processo de Hardware Simulado
-    pid_t inter_pid = fork();
-    if (inter_pid == 0) {
-        char arg_pid[10];
-        sprintf(arg_pid, "%d", getppid()); // Passa o PID do Kernel como argumento pro Hardware
-        execl("./intercontroller", "./intercontroller", arg_pid, NULL); 
-    }
-
-    // 6. BOOT: Inicia o escalonamento dando a CPU para o A1.
-    proc_atual = 0;
-    tabela[proc_atual].state = RUNNING;
-    printf("[Kernel] Executando A1 (PC=0)\n");
-    kill(tabela[proc_atual].pid, SIGCONT);
-
-    // 7. LOOP DE SUPERVISÃO DO KERNEL
-    int ativos = NUM_APPS;
-    while (ativos > 0) {
-        ativos = 0;
-        for (int i = 0; i < NUM_APPS; i++) {
-            if (tabela[i].state != TERMINATED) ativos++;
-        }
-        // Omission Yield: Se ainda há processos vivos, o Kernel dorme (economizando CPU do host)
-        // e será acordado automaticamente quando receber qualquer sinal (IRQ0, IRQ1, SIGURG).
+        // dorme ate receber algum sinal pra nao gastar cpu
         pause(); 
     }
 
-    // 8. TEARDOWN (Encerramento Limpo)
-    printf("[Kernel] Todos finalizaram.\n");
-    kill(inter_pid, SIGKILL); // Mata o simulador de hardware.
+    // rotina de encerramento do sistema
+    printf("Kernel -> Todos conseguiram finalizar.\n");
     
-    // Libera recursos IPC do Linux para evitar vazamento de memória do hospedeiro.
-    msgctl(msgid, IPC_RMID, NULL); 
-    munmap(tabela, sizeof(PCB) * MAX_PROCESSOS);
+    // mata o hardware infinito
+    kill(pid_hardware, SIGKILL);
+    
+    // apaga as estruturas de comunicacao
+    msgctl(caixa_correio, IPC_RMID, NULL); 
+    munmap(tabela_processos, sizeof(BlocoProcesso) * MAX_PROCESSOS);
     shm_unlink(SHM_NAME);
-    close(shm_fd);
+    close(fd_mem_compartilhada);
 
-    printf("Sistema encerrado.\n");
+    printf("Sistema finalizado.\n");
     return 0;
 }
