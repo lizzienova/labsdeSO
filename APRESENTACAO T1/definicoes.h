@@ -24,18 +24,25 @@
 #define BLOCKED 2
 #define TERMINATED 3
 
-// estrutura do pcb (bloco de controle do processo)
+// estrutura do pcb (bloco de controle)
 typedef struct {
-    pid_t pid_real;          // pid real dado pelo linux
-    int estado_atual;        // estado (ready, running, etc)
-    int contador_instrucoes; // pc (program counter)
-    char tipo_operacao;      // tipo de io (R ou W)
+    pid_t pid_real;          
+    int estado_atual;        
+    int contador_instrucoes; 
+    char tipo_operacao;      
 } BlocoProcesso;
 
-// estrutura da mensagem enviada pro hardware
+
+// agora ela guarda o 'tempo_global' pra que o kernel, o hw e os apps leiam o mesmo relogio.
 typedef struct {
-    long tipo_msg; // tipo da mensagem pro msgsnd
-    int id_do_app; // qual processo pediu o io
+    int tempo_global;
+    BlocoProcesso processos[MAX_PROCESSOS];
+} MemoriaCompartilhada;
+
+// estrutura da mensagem pro hardware
+typedef struct {
+    long tipo_msg; 
+    int id_do_app; 
 } AvisoHardware;
 
 #endif

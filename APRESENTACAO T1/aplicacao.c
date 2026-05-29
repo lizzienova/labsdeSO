@@ -10,72 +10,71 @@
 #include <sys/types.h>
 #include "definicoes.h"
 
+volatile sig_atomic_t recebi_tick = 0;
+
+void tratador_tick(int sig) {
+    recebi_tick = 1;
+}
+
 int main(int argc, char *argv[]) {
-    // verifica se os argumentos do exec foram passados
-    if (argc < 3) {
-        fprintf(stderr, "App -> Erro: Argumentos insuficientes.\n");
-        return 1;
-    }
+    if (argc < 3) return 1;
     
-    // pega o id do processo e a permissao de io
     int meu_id = atoi(argv[1]);
-    int vai_usar_disco = atoi(argv[2]); // 1 se for fazer io, 0 se nao
+    int vai_usar_disco = atoi(argv[2]); 
     
-    // abre a memoria compartilhada criada pelo kernel
     int fd_memoria = shm_open(SHM_NAME, O_RDWR, 0666);
-    if (fd_memoria == -1) {
-        perror("App -> Erro ao abrir memoria compartilhada");
-        return 1;
-    }
     
-    // mapeia a memoria pro ponteiro local
-    BlocoProcesso *mural = mmap(NULL, sizeof(BlocoProcesso) * MAX_PROCESSOS, PROT_READ | PROT_WRITE, MAP_SHARED, fd_memoria, 0);
-    if (mural == MAP_FAILED) {
-        perror("App -> Erro no mmap");
-        return 1;
-    }
+    
+    // mapeamos a nova estrutura de memoria, que tem o relogio global junto
+    MemoriaCompartilhada *mural = mmap(NULL, sizeof(MemoriaCompartilhada), PROT_READ | PROT_WRITE, MAP_SHARED, fd_memoria, 0);
 
-    // pega o pid do kernel pra mandar os sinais depois
     pid_t pid_do_chefe = getppid();
-    printf("Processo A%d Inicializado.\n", meu_id + 1);
 
-    // executa ate o pc chegar no maximo definido
-    while (mural[meu_id].contador_instrucoes < MAX_PC) {
-        // simula o tempo de execucao na cpu
-        sleep(1); 
+    signal(SIGUSR1, tratador_tick);
+
+    
+    // prints usando o relogio 
+    printf("%ds     Kernel -> App A%d inicializado (PID: %d) e aguardando...\n", mural->tempo_global, meu_id + 1, getpid());
+
+    while (mural->processos[meu_id].contador_instrucoes < MAX_PC) {
         
-        // atualiza o pc na memoria compartilhada
-        mural[meu_id].contador_instrucoes++; 
-        printf("  -> Processo A%d Executando PC=%d\n", meu_id + 1, mural[meu_id].contador_instrucoes);
+        while (!recebi_tick) {
+            sleep(1); 
+        }
+        recebi_tick = 0;
+        
+        mural->processos[meu_id].contador_instrucoes++; 
+        
+        
+        // print pc
+        printf("%ds     App A%d -> Executando instrucao... (PC=%d)\n", 
+               mural->tempo_global, meu_id + 1, mural->processos[meu_id].contador_instrucoes);
 
         int disparar_syscall = 0;
         char letra_op = '0';
 
-        // checa a condicao pra pedir io (flag ativa e pc = 3)
-        if (vai_usar_disco == 1 && mural[meu_id].contador_instrucoes == 3) { 
+        if (vai_usar_disco == 1 && mural->processos[meu_id].contador_instrucoes == 3) { 
             disparar_syscall = 1;
-            // define R para id par e W para id impar
             letra_op = (meu_id % 2 == 0) ? 'R' : 'W'; 
         }
 
-        // se precisou de io, chama o kernel
         if (disparar_syscall) {
-            printf("  !! Processo A%d Pedindo I/O (%c) no PC=%d\n", meu_id + 1, letra_op, mural[meu_id].contador_instrucoes);
             
-            // salva a operacao no pcb
-            mural[meu_id].tipo_operacao = letra_op; 
+            // avisa do pedido de io com o tempo certo
+            printf("\n%ds     App A%d -> Chamada de Sistema (%c). Solicitando I/O...\n", 
+                   mural->tempo_global, meu_id + 1, letra_op);
             
-            // dispara o sinal urg pro kernel interceptar
+            mural->processos[meu_id].tipo_operacao = letra_op; 
             kill(pid_do_chefe, SIGURG); 
             
-            // pausa rapida pra nao dar conflito de sinais no linux
-            usleep(50000); 
+            
+            // isso impede que o laco rode de novo e o pc aumente antes do kernel conseguir pausar de verdade.
+            usleep(100000); 
         }
     }
 
-    // finaliza e avisa no pcb
-    mural[meu_id].estado_atual = TERMINATED;
-    printf("Processo A%d Finalizado.\n", meu_id + 1);
+    mural->processos[meu_id].estado_atual = TERMINATED;
+    printf("%ds     App A%d -> Finalizado com sucesso.\n", mural->tempo_global, meu_id + 1);
     
     return 0;
 }
