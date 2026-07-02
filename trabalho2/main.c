@@ -23,7 +23,6 @@ unsigned int calcular_pagina(unsigned int endereco, int tamanho_pagina_kb) {
     else if (tamanho_pagina_kb == 8) {
         return endereco >> 13;
     }
-    
     return 0;
 }
 
@@ -249,12 +248,12 @@ int main(int argc, char *argv[]) {
 
     fclose(arquivo);
 
-    printf("Simulacao concluida (Fase 3).\n");
+    printf("Simulacao finalizada.\n");
     printf("Total de acessos (Tempo Global): %lu\n", tempo_global);
     printf("Total de Page Faults: %u\n", page_faults);
     printf("Total de Paginas Sujas escritas: %u\n", paginas_sujas);
 
-    // Finalizacao
+    // liberando a memória
     free(memoria_fisica);
     return 0;
 }
