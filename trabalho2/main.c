@@ -245,12 +245,18 @@ int main(int argc, char *argv[]) {
 
     fclose(arquivo);
 
-    printf("Simulacao finalizada.\n");
-    printf("Total de acessos (Tempo Global): %lu\n", tempo_global);
-    printf("Total de Page Faults: %u\n", page_faults);
-    printf("Total de Paginas Sujas escritas: %u\n", paginas_sujas);
+    printf("Executando o simulador...\n");
+    printf("Arquivo de entrada: %s\n", arquivo_log);
+    printf("Tamanho da memoria fisica: %d MB\n", tamanho_memoria);
+    printf("Tamanho das paginas: %d KB\n", tamanho_pagina);
+    printf("Algoritmo de substituicao: %s\n", algoritmo);
+    printf("Numero de Faltas de Paginas: %u\n", page_faults);
+    printf("Numero de Paginas Escritas: %u\n", paginas_sujas);
 
     // liberando a memória
     free(memoria_fisica);
+    if (log_paginas != NULL) {
+        free(log_paginas);
+    }
     return 0;
 }
