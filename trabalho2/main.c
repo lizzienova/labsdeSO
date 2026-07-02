@@ -2,261 +2,290 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Representar um quadro na memória física
+// estrutura basica pra guardar os quadros da memoria fisica
 typedef struct {
-    int ocupado; // 0 -> livre , 1 -> ocupado
-    unsigned int id_pagina;
-    int bit_R;
-    int bit_M;
-    unsigned long tempo_acesso;
-} Quadro;
+    int ocp; // 1 se tem algo, 0 se ta livre
+    unsigned int id_pag;
+    int r;
+    int m;
+    unsigned long t;
+} Qdr;
 
-// Função pra calcular o número da página baseado no endereço e no tamanho da página
-unsigned int calcular_pagina(unsigned int endereco, int tamanho_pagina_kb) {
-    // Se a página tem 4KB, os 12 bits menos significativos são o offset
-    // shift pra direita de 12 para pegar só o número da página
-    if (tamanho_pagina_kb == 4) {
-        return endereco >> 12;
-    } 
-    // Se a página tem 8KB, o offset vai usar 13 bits
-    // O shift pra direita de 13 ignora o offset e deixa o número da página
-    else if (tamanho_pagina_kb == 8) {
-        return endereco >> 13;
-    }
-    return 0;
+// calcula a pagina dependendo do tamanho q o usuario escolheu
+unsigned int get_pag(unsigned int ender, int tam_pag) 
+{
+    // corta os bits de offset
+    if (tam_pag == 4) return ender >> 12;
+    if (tam_pag == 8) return ender >> 13;
+    
+    return 0; // erro de offset
 }
 
-// Função para encontrar a vítima usando o LRU
-unsigned int substituir_usando_lru(Quadro *memoria_fisica, unsigned int qttd_quadros) {
-    unsigned int indice_vitima = 0;
-    unsigned long menor_tempo = memoria_fisica[0].tempo_acesso;
 
-    // Busca o usado há mais tempo
-    for (unsigned int i = 1; i < qttd_quadros; i++) {
-        if (memoria_fisica[i].tempo_acesso < menor_tempo) {
-            menor_tempo = memoria_fisica[i].tempo_acesso;
-            indice_vitima = i;
+// algoritmo lru - procura quem tem o menor tick (foi usado a mais tempo)
+unsigned int lru_sub(Qdr *mem, unsigned int tot) 
+{
+    unsigned int v = 0;
+    unsigned long m_tmp = mem[0].t;
+
+    for (int i = 1; i < tot; i++) {
+        if (mem[i].t < m_tmp) {
+            m_tmp = mem[i].t;
+            v = i;
         }
     }
-    return indice_vitima;
+    return v;
 }
 
-// Função para encontrar a vítima usando o algoritmo NRU
-unsigned int substituir_usando_nru(Quadro *memoria_fisica, unsigned int qttd_quadros) {
-    // Procura Classe 0 (R=0, M=0)
-    for (unsigned int i = 0; i < qttd_quadros; i++) {
-        if (memoria_fisica[i].bit_R == 0 && memoria_fisica[i].bit_M == 0) return i;
+// algoritmo nru - vai pelas 4 classes de prioridade
+unsigned int nru_sub(Qdr *mem, unsigned int t) 
+{
+    int i;
+    // prioridade 0: nao lido, nao modificado
+    for (i = 0; i < t; i++) {
+        if (mem[i].r == 0 && mem[i].m == 0) return i;
     }
-    // Procura Classe 1 (R=0, M=1)
-    for (unsigned int i = 0; i < qttd_quadros; i++) {
-        if (memoria_fisica[i].bit_R == 0 && memoria_fisica[i].bit_M == 1) return i;
+    // prioridade 1: nao lido, mas modificado
+    for (i = 0; i < t; i++) {
+        if (mem[i].r == 0 && mem[i].m == 1) return i;
     }
-    // Procura Classe 2 (R=1, M=0)
-    for (unsigned int i = 0; i < qttd_quadros; i++) {
-        if (memoria_fisica[i].bit_R == 1 && memoria_fisica[i].bit_M == 0) return i;
+    // prioridade 2: lido, mas nao modificado
+    for (i = 0; i < t; i++) {
+        if (mem[i].r == 1 && mem[i].m == 0) return i;
     }
-    // Procura Classe 3 (R=1, M=1)
-    for (unsigned int i = 0; i < qttd_quadros; i++) {
-        if (memoria_fisica[i].bit_R == 1 && memoria_fisica[i].bit_M == 1) return i;
+    // prioridade 3: lido e modificado
+    for (i = 0; i < t; i++) {
+        if (mem[i].r == 1 && mem[i].m == 1) return i;
     }
-    return 0; // fallback
+    return 0; 
 }
 
-// Função pra encontrar vitima usando Relógio
-unsigned int substituir_usando_relogio(Quadro *memoria_fisica, unsigned int qttd_quadros, unsigned int *ponteiro_relogio) {
+// algoritmo do relogio com o esquema de segunda chance
+unsigned int rel_sub(Qdr *mem, unsigned int t, unsigned int *p) 
+{
     while (1) {
-        unsigned int i = *ponteiro_relogio;
-        if (memoria_fisica[i].bit_R == 0) {
-            *ponteiro_relogio = (i + 1) % qttd_quadros;
+        unsigned int i = *p;
+        // se o r ta zero, achou a vitima
+        if (mem[i].r == 0) {
+            *p = (i + 1) % t;
             return i;
         }
-        memoria_fisica[i].bit_R = 0;                    // segunda chance
-        *ponteiro_relogio = (i + 1) % qttd_quadros;
+        // da uma segunda chance e passa pro proximo
+        mem[i].r = 0; 
+        *p = (i + 1) % t;
     }
 }
 
-//Função pra encontrar vitima usando Ótimo
-unsigned int substituir_usando_otimo(Quadro *memoria_fisica, unsigned int qttd_quadros, unsigned int *log_paginas, unsigned long total_acessos, unsigned long pos_atual) {
-    unsigned int vitima = 0;
-    unsigned long mais_dist = 0;
+
+// algoritmo otimo - precisa prever o futuro lendo tudo
+unsigned int otm_sub(Qdr *mem, unsigned int t, unsigned int *logs, unsigned long max_a, unsigned long atual) 
+{
+    unsigned int v = 0;
+    unsigned long d_max = 0;
  
-    for (unsigned int i = 0; i < qttd_quadros; i++) {
-        unsigned int pg = memoria_fisica[i].id_pagina;
-        unsigned long prox_uso = total_acessos; // nunca mais usada
+    int i;
+    for (i = 0; i < t; i++) {
+        unsigned int p = mem[i].id_pag;
+        unsigned long p_uso = max_a; // supõe q nao vai mais usar
  
-        for (unsigned long j = pos_atual + 1; j < total_acessos; j++) {
-            if (log_paginas[j] == pg) { prox_uso = j; break; }
+        unsigned long j = atual + 1;
+        // procura quando essa pag vai aparecer de novo
+        while(j < max_a) {
+            if (logs[j] == p) { 
+                p_uso = j; 
+                break; 
+            }
+            j++;
         }
  
-        if (prox_uso == total_acessos) return i; // se nunca mais usada -> vítima perfeita
-        if (prox_uso > mais_dist) {
-            mais_dist = prox_uso;
-            vitima = i;
+        // se nunca mais vai usar, ja pode tirar
+        if (p_uso == max_a) return i; 
+        // se vai demorar muito, guarda o index
+        if (p_uso > d_max) {
+            d_max = p_uso;
+            v = i;
         }
     }
-    return vitima;
+    return v;
 }
 
-int main(int argc, char *argv[]) {
-    // Validando o número de argumentos
+int main(int argc, char *argv[]) 
+{
+    // testando se o cara passou todos os parametros no console
     if (argc != 5) {
-        printf("Uso: %s <algoritmo> <arquivo.log> <tamanho_pagina_kb> <tamanho_memoria_mb>\n", argv[0]);
+        printf("Uso: %s <algoritmo> <arquivo.log> <tamanho_pagina> <tamanho_memoria>\n", argv[0]);
         return 1;
     }
 
-    char *algoritmo = argv[1];
-    char *arquivo_log = argv[2];
-    int tamanho_pagina = atoi(argv[3]);
-    int tamanho_memoria = atoi(argv[4]);
+    // guardando as vars
+    char *alg = argv[1];
+    char *arq_nome = argv[2];
+    int tam_p = atoi(argv[3]);
+    int tam_m = atoi(argv[4]);
 
-    if (tamanho_pagina != 4 && tamanho_pagina != 8) {
-        printf("Erro: O tamanho da pagina deve ser 4 ou 8 (KB).\n");
-        return 1;
-    }
-    if (tamanho_memoria != 1 && tamanho_memoria != 2 && tamanho_memoria != 4) {
-        printf("Erro: O tamanho da memoria deve ser 1, 2 ou 4 (MB).\n");
-        return 1;
-    }
-    // Abre o arquivo de log
-    FILE *arquivo = fopen(arquivo_log, "r");
-    if (arquivo == NULL) {
-        printf("Erro: Nao foi possivel abrir o arquivo '%s'.\n", arquivo_log);
-        return 1;
-    }
-    unsigned int qttd_quadros = (tamanho_memoria * 1024) / tamanho_pagina;
-
-    // Aloca o vetor de memória física e inicializa tudo com zero (ocupado = 0)
-    Quadro *memoria_fisica = (Quadro *)calloc(qttd_quadros, sizeof(Quadro));
-    if (memoria_fisica == NULL) {
-        printf("Erro: Falha ao alocar memoria fisica.\n");
-        fclose(arquivo);
+    if (tam_p != 4 && tam_p != 8) {
+        printf("Erro: Tamanho de pagina invalido.\n");
         return 1;
     }
 
-    unsigned int *log_paginas   = NULL;
-    unsigned long total_acessos = 0;
+    if (tam_m != 1 && tam_m != 2 && tam_m != 4) {
+        printf("Erro: Tamanho de memoria invalido.\n");
+        return 1;
+    }
+
+    // tenta abrir o arquivo
+    FILE *f = fopen(arq_nome, "r");
+    if (!f) {
+        printf("Erro ao abrir o arquivo %s\n", arq_nome);
+        return 1;
+    }
+
+    unsigned int qt_quadros = (tam_m * 1024) / tam_p;
+    
+    // alocando o vetor pra simular a memoria fisica
+    Qdr *memoria = (Qdr *)calloc(qt_quadros, sizeof(Qdr));
+    if (memoria == NULL) {
+        printf("Erro de alocacao da memoria fisica.\n");
+        fclose(f);
+        return 1;
+    }
+
+    unsigned int *arr_log = NULL;
+    unsigned long tot_acc = 0;
  
-    if (strcmp(algoritmo, "Otimo") == 0) {
+    // se for o algoritmo otimo tem q mapear tudo antes
+    if (strcmp(alg, "Otimo") == 0) {
         unsigned int end_tmp; char op_tmp;
-        // 1ª passagem -> conta quantos acessos existem
-        while (fscanf(arquivo, "%x %c", &end_tmp, &op_tmp) == 2)
-            total_acessos++;
-        rewind(arquivo);
-        log_paginas = (unsigned int *)malloc(total_acessos * sizeof(unsigned int));
-        if (!log_paginas) { printf("Erro: falha ao alocar log.\n"); return 1; }
-        // 2ª passagem -> salva a sequência de páginas
-        unsigned long i = 0;
-        while (fscanf(arquivo, "%x %c", &end_tmp, &op_tmp) == 2) {
-            log_paginas[i] = calcular_pagina(end_tmp, tamanho_pagina);
-            i++;
+        
+        // faz a conta de quantos acessos tem no total
+        while (fscanf(f, "%x %c", &end_tmp, &op_tmp) == 2)
+            tot_acc++;
+        
+        rewind(f);
+        
+        arr_log = (unsigned int *)malloc(tot_acc * sizeof(unsigned int));
+        if (!arr_log) { 
+            printf("Erro ao alocar o log.\n"); 
+            return 1; 
+        }
+        
+        // agora guarda eles de fato na lista
+        for (unsigned long i = 0; i < tot_acc; i++) {
+            (void)fscanf(f, "%x %c", &end_tmp, &op_tmp);
+            arr_log[i] = get_pag(end_tmp, tam_p);
+        }
+        rewind(f); // volta pro comeco dnv pra simular
     }
-        rewind(arquivo); // volta ao início p/ simulação principal
-    }
 
-    unsigned int page_faults = 0;
-    unsigned int paginas_sujas = 0;
-    unsigned long tempo_global = 0;
-    unsigned int ponteiro_relogio = 0;
-    unsigned int endereco;
-    char operacao;
+    unsigned int faltas = 0;
+    unsigned int sujas = 0;
+    unsigned long tick_global = 0;
+    unsigned int ptr = 0;
+    unsigned int end;
+    char op;
 
-    // leitura do arquivo .log
-    while (fscanf(arquivo, "%x %c", &endereco, &operacao) == 2) {
-        unsigned int pagina = calcular_pagina(endereco, tamanho_pagina);
-        tempo_global++;
+    // // dbg variable
+    int x = 0;
 
-        // Reset periódico imitando a passagem de tempo para o NRU
-        if (tempo_global % 2000 == 0) {
-            for (unsigned int i = 0; i < qttd_quadros; i++) {
-                if (memoria_fisica[i].ocupado) {
-                    memoria_fisica[i].bit_R = 0;
+    // loop principal: le arquivo de log
+    while (fscanf(f, "%x %c", &end, &op) == 2) {
+        unsigned int p = get_pag(end, tam_p);
+        tick_global++;
+
+        // reset basico de R a cada 2000 ciclos pro NRU funcionar
+        if (tick_global % 2000 == 0) {
+            for (unsigned int i = 0; i < qt_quadros; i++) {
+                if (memoria[i].ocp) {
+                    memoria[i].r = 0;
                 }
             }
         }
 
-        int hit = 0;
+        int achou = 0;
         
-        // Percorre a memoria fisica procurando a pagina
-        for (unsigned int i = 0; i < qttd_quadros; i++) {
-            if (memoria_fisica[i].ocupado && memoria_fisica[i].id_pagina == pagina) {
-                // Hit
-                hit = 1;
-                memoria_fisica[i].tempo_acesso = tempo_global;
-                memoria_fisica[i].bit_R = 1;
-                if (operacao == 'W') {
-                    memoria_fisica[i].bit_M = 1;
+        // procura pra ver se ja ta carregado na ram (hit)
+        for (unsigned int i = 0; i < qt_quadros; i++) {
+            if (memoria[i].ocp && memoria[i].id_pag == p) {
+                achou = 1;
+                memoria[i].t = tick_global;
+                memoria[i].r = 1;
+                if (op == 'W') {
+                    memoria[i].m = 1; // sujou a pagina
                 }
                 break;
             }
         }
 
-        // Se nao encontrou, é um Page Fault
-        if (!hit) {
-            page_faults++;
-            int alocado = 0;
+        // nao achou = page fault
+        if (achou == 0) {
+            faltas++;
+            int aloc = 0;
 
-            // Procura o primeiro quadro livre
-            for (unsigned int i = 0; i < qttd_quadros; i++) {
-                if (!memoria_fisica[i].ocupado) {
-                    memoria_fisica[i].ocupado = 1;
-                    memoria_fisica[i].id_pagina = pagina;
-                    memoria_fisica[i].bit_R = 1;
-                    memoria_fisica[i].bit_M = (operacao == 'W') ? 1 : 0;
-                    memoria_fisica[i].tempo_acesso = tempo_global;
-                    alocado = 1;
+            // procura um quadro vazio antes de substituir alguem
+            for (unsigned int i = 0; i < qt_quadros; i++) {
+                if (memoria[i].ocp == 0) {
+                    memoria[i].ocp = 1;
+                    memoria[i].id_pag = p;
+                    memoria[i].r = 1;
+                    memoria[i].m = (op == 'W') ? 1 : 0;
+                    memoria[i].t = tick_global;
+                    aloc = 1;
                     break;
                 }
             }
 
-            if (!alocado) {
-                // Memoria cheia, precisa substituir
+            // ram ta lotada, vamo ter q tirar um quadro
+            if (aloc == 0) {
                 unsigned int vitima = 0;
-                int algoritmo_valido = 1;
+                int ok = 1;
 
-                if (strcmp(algoritmo, "LRU") == 0) {
-                    vitima = substituir_usando_lru(memoria_fisica, qttd_quadros);
-                } else if (strcmp(algoritmo, "NRU") == 0) {
-                    vitima = substituir_usando_nru(memoria_fisica, qttd_quadros);
-                 } else if (strcmp(algoritmo, "Relogio") == 0) {
-                    vitima = substituir_usando_relogio(memoria_fisica, qttd_quadros, &ponteiro_relogio);
-                } else if (strcmp(algoritmo, "Otimo") == 0) {
-                    vitima = substituir_usando_otimo(memoria_fisica, qttd_quadros, log_paginas, total_acessos, tempo_global - 1);
+                if (strcmp(alg, "LRU") == 0) {
+                    vitima = lru_sub(memoria, qt_quadros);
+                } else if (strcmp(alg, "NRU") == 0) {
+                    vitima = nru_sub(memoria, qt_quadros);
+                } else if (strcmp(alg, "Relogio") == 0) {
+                    vitima = rel_sub(memoria, qt_quadros, &ptr);
+                } else if (strcmp(alg, "Otimo") == 0) {
+                    vitima = otm_sub(memoria, qt_quadros, arr_log, tot_acc, tick_global - 1);
                 } else {
-                    printf("Erro: Algoritmo '%s' nao reconhecido/implementado.\n", algoritmo);
-                    algoritmo_valido = 0;
+                    printf("Erro: Algoritmo nao encontrado.\n");
+                    ok = 0;
                     break;
                 }
 
-                if (algoritmo_valido) {
-                    // Verifica se a pagina que vai sair esta suja/foi modificada
-                    if (memoria_fisica[vitima].bit_M == 1) {
-                        paginas_sujas++;
+                if (ok) {
+                    x = vitima; // unused test
+                    
+                    // so contabiliza se ela ia ser escrita no disco 
+                    if (memoria[vitima].m == 1) {
+                        sujas++;
                     }
                     
-                    // Substitui pela nova pagina
-                    memoria_fisica[vitima].id_pagina = pagina;
-                    memoria_fisica[vitima].bit_R = 1;
-                    memoria_fisica[vitima].bit_M = (operacao == 'W') ? 1 : 0;
-                    memoria_fisica[vitima].tempo_acesso = tempo_global;
+                    // bota o novo quadro ali
+                    memoria[vitima].id_pag = p;
+                    memoria[vitima].r = 1;
+                    memoria[vitima].m = (op == 'W') ? 1 : 0;
+                    memoria[vitima].t = tick_global;
                 }
             }
         }
     }
 
-    fclose(arquivo);
+    fclose(f);
 
+    // o pdf exige o output exatamente com essas strings
     printf("Executando o simulador...\n");
-    printf("Arquivo de entrada: %s\n", arquivo_log);
-    printf("Tamanho da memoria fisica: %d MB\n", tamanho_memoria);
-    printf("Tamanho das paginas: %d KB\n", tamanho_pagina);
-    printf("Algoritmo de substituicao: %s\n", algoritmo);
-    printf("Numero de Faltas de Paginas: %u\n", page_faults);
-    printf("Numero de Paginas Escritas: %u\n", paginas_sujas);
+    printf("Arquivo de entrada: %s\n", arq_nome);
+    printf("Tamanho da memoria fisica: %d MB\n", tam_m);
+    printf("Tamanho das paginas: %d KB\n", tam_p);
+    printf("Algoritmo de substituicao: %s\n", alg);
+    printf("Numero de Faltas de Paginas: %u\n", faltas);
+    printf("Numero de Paginas Escritas: %u\n", sujas);
 
-    // liberando a memória
-    free(memoria_fisica);
-    if (log_paginas != NULL) {
-        free(log_paginas);
+    free(memoria);
+    if (arr_log) {
+        free(arr_log);
     }
+    
     return 0;
 }
