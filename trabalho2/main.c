@@ -27,7 +27,7 @@ unsigned int calcular_pagina(unsigned int endereco, int tamanho_pagina_kb) {
 }
 
 // Função para encontrar a vítima usando o LRU
-unsigned int substituir_lru(Quadro *memoria_fisica, unsigned int qttd_quadros) {
+unsigned int substituir_usando_lru(Quadro *memoria_fisica, unsigned int qttd_quadros) {
     unsigned int indice_vitima = 0;
     unsigned long menor_tempo = memoria_fisica[0].tempo_acesso;
 
@@ -42,7 +42,7 @@ unsigned int substituir_lru(Quadro *memoria_fisica, unsigned int qttd_quadros) {
 }
 
 // Função para encontrar a vítima usando o algoritmo NRU
-unsigned int substituir_nru(Quadro *memoria_fisica, unsigned int qttd_quadros) {
+unsigned int substituir_usando_nru(Quadro *memoria_fisica, unsigned int qttd_quadros) {
     // Procura Classe 0 (R=0, M=0)
     for (unsigned int i = 0; i < qttd_quadros; i++) {
         if (memoria_fisica[i].bit_R == 0 && memoria_fisica[i].bit_M == 0) return i;
@@ -62,10 +62,8 @@ unsigned int substituir_nru(Quadro *memoria_fisica, unsigned int qttd_quadros) {
     return 0; // fallback
 }
 
-// Algoritmo do Relógio
-// Percorre os quadros em círculo
-// dá uma segunda chance
-unsigned int substituir_relogio(Quadro *memoria_fisica, unsigned int qttd_quadros, unsigned int *ponteiro_relogio) {
+// Função pra encontrar vitima usando Relógio
+unsigned int substituir_usando_relogio(Quadro *memoria_fisica, unsigned int qttd_quadros, unsigned int *ponteiro_relogio) {
     while (1) {
         unsigned int i = *ponteiro_relogio;
         if (memoria_fisica[i].bit_R == 0) {
@@ -77,21 +75,22 @@ unsigned int substituir_relogio(Quadro *memoria_fisica, unsigned int qttd_quadro
     }
 }
 
-unsigned int substituir_otimo(Quadro *memoria_fisica, unsigned int qttd_quadros, unsigned int *log_paginas, unsigned long total_acessos, unsigned long posicao_atual) {
+//Função pra encontrar vitima usando Ótimo
+unsigned int substituir_usando_otimo(Quadro *memoria_fisica, unsigned int qttd_quadros, unsigned int *log_paginas, unsigned long total_acessos, unsigned long pos_atual) {
     unsigned int vitima = 0;
     unsigned long mais_dist = 0;
  
     for (unsigned int i = 0; i < qttd_quadros; i++) {
         unsigned int pg = memoria_fisica[i].id_pagina;
-        unsigned long proximo_uso = total_acessos; // nunca mais usada
+        unsigned long prox_uso = total_acessos; // nunca mais usada
  
-        for (unsigned long j = posicao_atual + 1; j < total_acessos; j++) {
-            if (log_paginas[j] == pg) { proximo_uso = j; break; }
+        for (unsigned long j = pos_atual + 1; j < total_acessos; j++) {
+            if (log_paginas[j] == pg) { prox_uso = j; break; }
         }
  
-        if (proximo_uso == total_acessos) return i; // se nunca mais usada -> vítima perfeita
-        if (proximo_uso > mais_dist) {
-            mais_dist = proximo_uso;
+        if (prox_uso == total_acessos) return i; // se nunca mais usada -> vítima perfeita
+        if (prox_uso > mais_dist) {
+            mais_dist = prox_uso;
             vitima = i;
         }
     }
@@ -114,21 +113,18 @@ int main(int argc, char *argv[]) {
         printf("Erro: O tamanho da pagina deve ser 4 ou 8 (KB).\n");
         return 1;
     }
-
     if (tamanho_memoria != 1 && tamanho_memoria != 2 && tamanho_memoria != 4) {
         printf("Erro: O tamanho da memoria deve ser 1, 2 ou 4 (MB).\n");
         return 1;
     }
-
     // Abre o arquivo de log
     FILE *arquivo = fopen(arquivo_log, "r");
     if (arquivo == NULL) {
         printf("Erro: Nao foi possivel abrir o arquivo '%s'.\n", arquivo_log);
         return 1;
     }
-
     unsigned int qttd_quadros = (tamanho_memoria * 1024) / tamanho_pagina;
-    
+
     // Aloca o vetor de memória física e inicializa tudo com zero (ocupado = 0)
     Quadro *memoria_fisica = (Quadro *)calloc(qttd_quadros, sizeof(Quadro));
     if (memoria_fisica == NULL) {
@@ -218,13 +214,13 @@ int main(int argc, char *argv[]) {
                 int algoritmo_valido = 1;
 
                 if (strcmp(algoritmo, "LRU") == 0) {
-                    vitima = substituir_lru(memoria_fisica, qttd_quadros);
+                    vitima = substituir_usando_lru(memoria_fisica, qttd_quadros);
                 } else if (strcmp(algoritmo, "NRU") == 0) {
-                    vitima = substituir_nru(memoria_fisica, qttd_quadros);
+                    vitima = substituir_usando_nru(memoria_fisica, qttd_quadros);
                  } else if (strcmp(algoritmo, "Relogio") == 0) {
-                    vitima = substituir_relogio(memoria_fisica, qttd_quadros, &ponteiro_relogio);
+                    vitima = substituir_usando_relogio(memoria_fisica, qttd_quadros, &ponteiro_relogio);
                 } else if (strcmp(algoritmo, "Otimo") == 0) {
-                    vitima = substituir_otimo(memoria_fisica, qttd_quadros, log_paginas, total_acessos, tempo_global - 1);
+                    vitima = substituir_usando_otimo(memoria_fisica, qttd_quadros, log_paginas, total_acessos, tempo_global - 1);
                 } else {
                     printf("Erro: Algoritmo '%s' nao reconhecido/implementado.\n", algoritmo);
                     algoritmo_valido = 0;
