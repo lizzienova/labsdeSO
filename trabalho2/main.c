@@ -14,12 +14,12 @@ typedef struct {
 // Função pra calcular o número da página baseado no endereço e no tamanho da página
 unsigned int calcular_pagina(unsigned int endereco, int tamanho_pagina_kb) {
     // Se a página tem 4KB, os 12 bits menos significativos são o offset
-    // shift right de 12 para pegar só o número da página
+    // shift pra direita de 12 para pegar só o número da página
     if (tamanho_pagina_kb == 4) {
         return endereco >> 12;
     } 
-    // Se a página tem 8KB, o offset usa 13 bits
-    // O shift right de 13 ignora o offset e deixa o número da página
+    // Se a página tem 8KB, o offset vai usar 13 bits
+    // O shift pra direita de 13 ignora o offset e deixa o número da página
     else if (tamanho_pagina_kb == 8) {
         return endereco >> 13;
     }
@@ -149,10 +149,11 @@ int main(int argc, char *argv[]) {
         log_paginas = (unsigned int *)malloc(total_acessos * sizeof(unsigned int));
         if (!log_paginas) { printf("Erro: falha ao alocar log.\n"); return 1; }
         // 2ª passagem -> salva a sequência de páginas
-        for (unsigned long i = 0; i < total_acessos; i++) {
-            (void)fscanf(arquivo, "%x %c", &end_tmp, &op_tmp);
+        unsigned long i = 0;
+        while (fscanf(arquivo, "%x %c", &end_tmp, &op_tmp) == 2) {
             log_paginas[i] = calcular_pagina(end_tmp, tamanho_pagina);
-        }
+            i++;
+    }
         rewind(arquivo); // volta ao início p/ simulação principal
     }
 
